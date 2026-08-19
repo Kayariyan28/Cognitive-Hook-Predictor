@@ -1,0 +1,11 @@
+# API layer
+fastapi==0.116.1
+python-multipart==0.0.20
+uvicorn[standard]==0.35.0
+
+# Keep NumPy aligned with the official TRIBE v2 package metadata.
+numpy==2.2.6
+huggingface-hub==0.34.4
+
+# Official code pinned to an immutable Git commit (not main).
+tribev2 @ git+https://github.com/facebookresearch/tribev2.git@af58661791a351a448a489042a28f6c37e1c14b7

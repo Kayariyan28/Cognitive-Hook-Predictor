@@ -1,0 +1,95 @@
+# Local configuration and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!**/.env.*.example
+*.local
+
+# JavaScript dependencies and build output
+node_modules/
+node_modules.offloaded-*/
+.npm/
+.pnpm-store/
+.yarn/
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.ipynb_checkpoints/
+
+# Downloaded models, inference state, and uploaded creator media
+.runtime/
+**/.runtime/
+.cache/
+models/
+checkpoints/
+uploads/
+results/
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+*.onnx
+*.gguf
+*.f32
+*.npy
+*.npz
+
+# Browser and test artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+blob-report/
+output/
+design-audit/
+design-qa.md
+qa/
+
+# Local agent instructions remain on disk but are not part of the public release
+AGENTS.md
+
+# Logs, temporary files, and coverage reports
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+.tmp/
+tmp/
+temp/
+
+# macOS, File Provider, editors, and IDEs
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+*.dataless
+*.dataless-backup
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

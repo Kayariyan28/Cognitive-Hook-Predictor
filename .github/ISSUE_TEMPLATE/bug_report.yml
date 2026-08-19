@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a reproducible problem in SignalFrame
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. Do not include private videos, tokens, credentials, or vulnerability details. Use GitHub private vulnerability reporting for security issues.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest repeatable sequence, using non-sensitive test media.
+      placeholder: |
+        1. Start...
+        2. Open...
+        3. Upload...
+        4. Observe...
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Revision
+      description: Commit SHA, tag, or release where the problem occurs.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Frontend interface
+        - TRIBE inference backend
+        - Creator Forecast workers
+        - Setup or documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, CPU/GPU, browser, Python, Node.js, and relevant model mode. Remove personal paths and secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Paste only the minimal relevant logs after removing tokens, paths, video content, and other private data.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, private media, personal paths, and sensitive inference results.
+          required: true
+        - label: This is not a security vulnerability report.
+          required: true

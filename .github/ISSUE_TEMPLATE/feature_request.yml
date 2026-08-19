@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a scoped, evidence-backed improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Creator problem
+      description: What decision or workflow is currently difficult?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the behavior, not just a model or technology name.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and validation
+      description: How would this be measured, calibrated, or tested without presenting a proxy as ground truth?
+    validations:
+      required: true
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Models, data, and licenses
+      description: List any required model, dataset, API, account data, or license constraints.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Product boundaries
+      options:
+        - label: The proposal does not treat TRIBE cortical output as attention, engagement, retention, or virality ground truth.
+          required: true
+        - label: The proposal keeps unavailable or uncalibrated metrics explicitly unavailable.
+          required: true

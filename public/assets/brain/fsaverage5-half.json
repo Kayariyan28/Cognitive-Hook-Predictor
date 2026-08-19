@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "signalframe-fsaverage5-mesh/1",
+  "format": "SFB1",
+  "mappingId": "fsaverage5-half:52eda3c221c9439b320f97663d441390c56a14e69c2cddb7a5073f6d550466cb",
+  "binary": "fsaverage5-half.bin",
+  "binarySha256": "52eda3c221c9439b320f97663d441390c56a14e69c2cddb7a5073f6d550466cb",
+  "byteOrder": "little-endian",
+  "byteLength": 737360,
+  "headerBytes": 32,
+  "positionsOffset": 32,
+  "indicesOffset": 245840,
+  "vertexCount": 20484,
+  "leftVertexCount": 10242,
+  "rightVertexCount": 10242,
+  "triangleCount": 40960,
+  "ordering": [
+    "left",
+    "right"
+  ],
+  "geometry": "0.5 * Nilearn fsaverage5 pial + 0.5 * inflated, matching TRIBE v2 BasePlotBrain(inflate='half')",
+  "bounds": {
+    "min": [
+      -75.177978515625,
+      -106.34244537353516,
+      -60.84112548828125
+    ],
+    "max": [
+      75.1108169555664,
+      88.21171569824219,
+      75.89260864257812
+    ]
+  },
+  "source": "https://github.com/nilearn/nilearn/tree/main/nilearn/datasets/data/fsaverage5",
+  "sourceSha256": {
+    "pial_left.gii.gz": "1e76fe43ac194c15fd272643f7ae7995621e2a496b3102b2d6175f0f8e6d7fc8",
+    "pial_right.gii.gz": "fdfae008bc10acf7cba82737ea5db9a7298948c41884a2d3330a785783a60a91",
+    "infl_left.gii.gz": "1a571c9d598a476a202c7295c235a709de63360047b92c0e7b75ed18b0f37e74",
+    "infl_right.gii.gz": "9f66b009e1da72158d75b4e739c6289aba0c1b08d818b2f0f9f61204aa4ba895"
+  }
+}

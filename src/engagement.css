@@ -1,0 +1,141 @@
+/* Modeled engagement stays visually and semantically separate from TRIBE. */
+.proxy-card.engagement-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 13px 14px 25px;
+}
+
+.engagement-card .proxy-wave {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  color: var(--lime-soft);
+}
+
+.engagement-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.engagement-card-head > span {
+  overflow: hidden;
+  color: #d4d5cf;
+  font-size: 9px;
+  font-weight: 730;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engagement-card-head > small {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 6px;
+  color: #858680;
+  font-size: 6px;
+  font-weight: 760;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+
+.engagement-score-row {
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.engagement-score-row > strong {
+  font-family: Space Grotesk, sans-serif;
+  font-size: 38px;
+  font-weight: 450;
+  line-height: 1;
+  letter-spacing: -.065em;
+  font-variant-numeric: tabular-nums;
+}
+
+.engagement-score-row > strong small {
+  margin-left: 2px;
+  color: #6f706c;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+}
+
+.engagement-summary {
+  margin: 0;
+  color: #999a94;
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.engagement-components {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.engagement-components > span {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  padding: 4px 5px;
+  border: 1px solid rgba(255, 255, 255, .075);
+  border-radius: 7px;
+  color: #757670;
+  font-size: 6px;
+  letter-spacing: .025em;
+}
+
+.engagement-components b {
+  color: #d9dad3;
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+}
+
+.engagement-card .proxy-disclaimer {
+  right: 10px;
+  bottom: 8px;
+  left: 10px;
+  overflow: hidden;
+  color: #686963;
+  font-size: 6.5px;
+  letter-spacing: .035em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 620px) {
+  .proxy-card.engagement-card {
+    padding-inline: 18px;
+  }
+
+  .engagement-score-row > strong {
+    font-size: 42px;
+  }
+
+  .engagement-card-head > span {
+    font-size: 10px;
+  }
+
+  .engagement-components > span {
+    padding: 5px 6px;
+    font-size: 7px;
+  }
+
+  .engagement-components b {
+    font-size: 8px;
+  }
+}
