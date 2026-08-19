@@ -3,11 +3,25 @@
 Evidence-first analysis for short-form video, with an independently verified
 TRIBE v2 cortical-response viewer.
 
-SignalFrame accepts an unposted clip, measures visual and audio structure,
-extracts optional learned evidence with pinned local models, and presents the
-result in a creator-focused interface. It is designed to fail closed: a model
-name, a confident-looking number, or a brain animation is never accepted as a
-substitute for validated evidence.
+## About
+
+SignalFrame is an open-source, pre-publish creative analysis lab for short-form
+video. A creator can inspect measurable visual and audio structure, optional
+learned model evidence, and a separately verified TRIBE v2 cortical-response
+prediction before deciding what to test or edit.
+
+The project deliberately keeps three evidence lanes separate:
+
+- **Content signals** describe properties measured from the uploaded clip.
+- **Multimodal evidence** describes what pinned visual, semantic, and audio
+  encoders extract when those optional workers are configured.
+- **TRIBE v2 descriptors** summarize a verified predicted cortical BOLD tensor;
+  they never become an engagement or virality score.
+
+SignalFrame is designed to fail closed: a model name, a confident-looking
+number, or a brain animation is never accepted as a substitute for validated
+evidence. Its purpose is to help creators form clearer editing experiments—not
+to promise views, retention, or platform distribution.
 
 > [!IMPORTANT]
 > SignalFrame does not claim that TRIBE v2 predicts virality. TRIBE v2 predicts
@@ -15,6 +29,23 @@ substitute for validated evidence.
 > probabilities remain unavailable unless a separately trained,
 > target-specific calibration head passes the project's provenance and
 > evaluation gates.
+
+## Product preview
+
+### Creator report
+
+![SignalFrame expanded Creator Report showing verified cortical descriptors, response moments, clip phases, and parcel summaries](docs/images/signalframe-creator-report.jpg)
+
+*An expanded tensor-derived Creator Report. These values describe the verified
+TRIBE prediction and are not measured audience behavior.*
+
+### 3D cortical replay
+
+![SignalFrame 3D fsaverage5 viewer replaying a verified 20,484-vertex TRIBE v2 prediction tensor](docs/images/signalframe-tribe-cortical-replay.jpg)
+
+*A saved video-only TRIBE v2 result replayed on the 20,484-vertex fsaverage5
+cortical surface in a WebGL-capable browser. The colors encode predicted
+model-target BOLD values—not attention, engagement, emotion, or virality.*
 
 ## What works today
 
