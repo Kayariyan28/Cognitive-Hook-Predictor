@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   ArrowLeft,
   Brain,
@@ -22,6 +23,7 @@ import {
   resolveForecastMetric,
 } from "../forecast/forecastPresentation.js";
 import { forecastFromJobResult, isActiveForecastJob } from "../forecast/jobClient.js";
+import { InsightPanel } from "./InsightPanel.jsx";
 
 const INITIAL_CREATOR_INPUTS = Object.freeze({
   platform: "youtube-shorts",
@@ -364,6 +366,9 @@ export function ForecastLab({
   onRunForecastJob,
   onRetryForecastJob,
   onResumeForecastJob,
+  tribeDescriptors = null,
+  onOpenAbCompare,
+  onSeek,
 }) {
   const [uncontrolledCreatorInputs, setUncontrolledCreatorInputs] = useState(INITIAL_CREATOR_INPUTS);
   const [workspaceView, setWorkspaceView] = useState("scores");
@@ -700,6 +705,13 @@ export function ForecastLab({
             <p><strong>What unlocks real scores</strong><span>Legally licensed, platform-specific outcomes; a defined prediction horizon; chronological holdout tests; probability calibration; and drift monitoring.</span></p>
           </div>
           <div className="forecast-truth-note"><WarningCircle size={15} weight="fill" /><span>TRIBE is kept separate with <code>forecastContribution:false</code>. Local substitutes are descriptive and never relabeled as V-JEPA, VideoLLaMA, audio semantics, trends or competitors.</span></div>
+          <InsightPanel
+            forecastResultId={forecastJobState?.result?.resultId ?? null}
+            tribeResultId={tribeDescriptors?.source?.resultId ?? null}
+            tribeDescriptors={tribeDescriptors}
+            onSeek={onSeek}
+            onOpenAbCompare={onOpenAbCompare}
+          />
         </aside>
       </div>
     </section>

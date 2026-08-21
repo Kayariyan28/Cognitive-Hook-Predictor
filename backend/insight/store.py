@@ -89,15 +89,20 @@ class InsightStore:
             raise InsightStoreError("stored insight JSON is not an object")
         return payload
 
-    def _publish_directory(self, parent: Path, name: str, filename: str, payload: Mapping[str, Any]) -> str:
+    def _publish_directory(
+        self, parent: Path, name: str, documents: Mapping[str, Mapping[str, Any]]
+    ) -> str:
+        """Publish every document of one record together, or publish none of them."""
+
         self.initialize()
         destination = parent / name
         if destination.exists():
-            raise InsightStoreError(f"{filename} already exists for {name}")
+            raise InsightStoreError(f"a record already exists for {name}")
         staging = parent / f".publishing-{name}-{uuid4().hex}"
         try:
             staging.mkdir(parents=False, exist_ok=False)
-            self._write_json_atomic(staging / filename, payload)
+            for filename, payload in documents.items():
+                self._write_json_atomic(staging / filename, payload)
             os.replace(staging, destination)
             self._fsync_directory(parent)
             return name
@@ -107,8 +112,23 @@ class InsightStore:
 
     # -- artifacts ---------------------------------------------------------
 
-    def publish_artifact(self, insight_id: str, payload: Mapping[str, Any]) -> str:
-        return self._publish_directory(self.artifacts_dir, insight_id, "artifact.json", payload)
+    def publish_artifact(
+        self,
+        insight_id: str,
+        payload: Mapping[str, Any],
+        bundle: Mapping[str, Any] | None = None,
+    ) -> str:
+        """Publish the artifact and the exact evidence it was generated from."""
+
+        documents: dict[str, Mapping[str, Any]] = {"artifact.json": payload}
+        if bundle is not None:
+            documents["bundle.json"] = bundle
+        return self._publish_directory(self.artifacts_dir, insight_id, documents)
+
+    def read_bundle(self, insight_id: str) -> dict[str, Any] | None:
+        """Return the evidence bundle a published artifact cites."""
+
+        return self._read_json(self.artifacts_dir / insight_id / "bundle.json")
 
     def read_artifact(self, insight_id: str) -> dict[str, Any] | None:
         payload = self._read_json(self.artifacts_dir / insight_id / "artifact.json")
@@ -122,7 +142,7 @@ class InsightStore:
 
     def publish_rejection(self, rejection_id: str, payload: Mapping[str, Any]) -> str:
         return self._publish_directory(
-            self.rejections_dir, rejection_id, "rejection.json", payload
+            self.rejections_dir, rejection_id, {"rejection.json": payload}
         )
 
     def read_rejection(self, rejection_id: str) -> dict[str, Any] | None:

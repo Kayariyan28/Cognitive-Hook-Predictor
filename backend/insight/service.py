@@ -173,7 +173,7 @@ class InsightService:
 
         artifact = self._artifact(request, bundle, outcome["artifact"], generation)
         try:
-            self.store.publish_artifact(artifact["insightId"], artifact)
+            self.store.publish_artifact(artifact["insightId"], artifact, bundle)
             self.store.cache_store(key, artifact["insightId"])
         except InsightStoreError as exc:
             return (
@@ -187,6 +187,11 @@ class InsightService:
 
     def read_artifact(self, insight_id: str) -> dict[str, Any] | None:
         return self.store.read_artifact(insight_id)
+
+    def read_bundle(self, insight_id: str) -> dict[str, Any] | None:
+        """The evidence a published artifact cites, so a reader can check it."""
+
+        return self.store.read_bundle(insight_id)
 
     def read_rejection(self, rejection_id: str) -> dict[str, Any] | None:
         return self.store.read_rejection(rejection_id)

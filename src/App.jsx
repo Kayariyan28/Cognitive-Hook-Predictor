@@ -42,6 +42,7 @@ import { compareTribeVariantReports } from "./tribe/variantComparison.js";
 import "./engagement.css";
 import "./creator-report.css";
 import "./forecast-lab.css";
+import "./insight-panel.css";
 
 const ANALYSIS_STEPS = [
   { value: 12, label: "Reading metadata" },
@@ -619,7 +620,7 @@ function TribePlainLanguageFinalReport({ report, reportMessage }) {
   );
 }
 
-function TribeAbCutLab({ open, onClose, primaryReport, primaryPrediction, atlas, sourceVideoUrl, busyOwner, onPredictVariant }) {
+function TribeAbCutLab({ open, onClose, primaryReport, primaryPrediction, atlas, sourceVideoUrl, busyOwner, onPredictVariant, experiment = null }) {
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const dialogRef = useRef(null);
@@ -842,6 +843,12 @@ function TribeAbCutLab({ open, onClose, primaryReport, primaryPrediction, atlas,
             </section>
           )}
 
+          {experiment && (
+            <p className="ab-lab-experiment">
+              <Flask size={14} weight="fill" /> Testing an insight experiment: {experiment.edit}
+              <small>Expected signal shift: {experiment.expectedSignalShift.map((shift) => `${shift.metricPath} ${shift.direction}`).join(", ")}. This is an untested heuristic, not a prediction.</small>
+            </p>
+          )}
           {!state.comparison && <p className="ab-lab-boundary">This lab compares predicted cortical response patterns only. It does not score either cut as better.</p>}
         </div>
         <div className="ab-lab-actions">
@@ -854,7 +861,7 @@ function TribeAbCutLab({ open, onClose, primaryReport, primaryPrediction, atlas,
   );
 }
 
-function TribePanel({ tribeState, tribeElapsedSeconds, mediaTime, mediaDuration, activeFrame, playing, sourceVideoUrl, busyOwner, onPredictVariant, onFrameChange, onSeek, onTogglePlayback, onOpenMethod }) {
+function TribePanel({ tribeState, tribeElapsedSeconds, mediaTime, mediaDuration, activeFrame, playing, sourceVideoUrl, busyOwner, onPredictVariant, onFrameChange, onSeek, onTogglePlayback, onOpenMethod, onDescriptorsChange, abCompareRequest = null }) {
   const [view, setView] = useState("map");
   const [isExpanded, setIsExpanded] = useState(false);
   const [abLabOpen, setAbLabOpen] = useState(false);
@@ -907,6 +914,14 @@ function TribePanel({ tribeState, tribeElapsedSeconds, mediaTime, mediaDuration,
       return { report: null, message: descriptorError?.message || "The verified tensor could not be summarized." };
     }
   }, [atlasState, prediction, tribeState.status]);
+
+  useEffect(() => {
+    onDescriptorsChange?.(descriptorState.report);
+  }, [descriptorState.report, onDescriptorsChange]);
+
+  useEffect(() => {
+    if (abCompareRequest) setAbLabOpen(true);
+  }, [abCompareRequest]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1069,7 +1084,7 @@ function TribePanel({ tribeState, tribeElapsedSeconds, mediaTime, mediaDuration,
         </>
       )}
       <div className={`tribe-message tribe-message--${tribeState.status}`}><Info size={17} weight="fill" /><span>{statusMessage}</span>{tribeState.status === "unconfigured" && <button type="button" onClick={() => { setIsExpanded(false); onOpenMethod(); }}>Connect</button>}</div>
-      <TribeAbCutLab open={abLabOpen} onClose={() => setAbLabOpen(false)} primaryReport={descriptorState.report} primaryPrediction={prediction} atlas={atlasState.atlas} sourceVideoUrl={sourceVideoUrl} busyOwner={busyOwner} onPredictVariant={onPredictVariant} />
+      <TribeAbCutLab open={abLabOpen} onClose={() => setAbLabOpen(false)} primaryReport={descriptorState.report} primaryPrediction={prediction} atlas={atlasState.atlas} sourceVideoUrl={sourceVideoUrl} busyOwner={busyOwner} onPredictVariant={onPredictVariant} experiment={abCompareRequest} />
     </aside>
   );
 }
@@ -1128,6 +1143,16 @@ export function App() {
   const forecastJobAbortRef = useRef(null);
   const restoredResultRef = useRef("");
   const [file, setFile] = useState(null);
+  const [tribeDescriptors, setTribeDescriptors] = useState(null);
+  const [abCompareRequest, setAbCompareRequest] = useState(null);
+
+  // The insight lane proposes an edit; the comparison itself stays in the
+  // existing A/B Cut Lab rather than being reimplemented next to it.
+  const openAbCompareForExperiment = useCallback((link) => {
+    if (!link) return;
+    setAbCompareRequest(link);
+    setForecastOpen(false);
+  }, []);
   const [videoUrl, setVideoUrl] = useState("");
   const [status, setStatus] = useState("idle");
   const [progress, setProgress] = useState({ value: 0, label: "Ready" });
@@ -1775,7 +1800,7 @@ export function App() {
               <ClipPanel videoUrl={videoUrl} result={result} videoRef={videoRef} playing={playing} onPlayingChange={setPlaying} onMediaTime={setMediaTime} onMetadata={setMediaDuration} onOpenPreview={() => setPreviewOpen(true)} />
             </div>
           </section>
-          <div className="reveal reveal--four"><TribePanel tribeState={tribeState} tribeElapsedSeconds={tribeElapsedSeconds} mediaTime={mediaTime} mediaDuration={mediaDuration} activeFrame={activeFrame} playing={playing} sourceVideoUrl={videoUrl} busyOwner={tribeBusyOwner} onPredictVariant={predictVariantWithTribe} onFrameChange={setActiveFrame} onSeek={seekVideo} onTogglePlayback={togglePlayback} onOpenMethod={() => setMethodOpen(true)} /></div>
+          <div className="reveal reveal--four"><TribePanel tribeState={tribeState} tribeElapsedSeconds={tribeElapsedSeconds} mediaTime={mediaTime} mediaDuration={mediaDuration} activeFrame={activeFrame} playing={playing} sourceVideoUrl={videoUrl} busyOwner={tribeBusyOwner} onPredictVariant={predictVariantWithTribe} onFrameChange={setActiveFrame} onSeek={seekVideo} onTogglePlayback={togglePlayback} onOpenMethod={() => setMethodOpen(true)} onDescriptorsChange={setTribeDescriptors} abCompareRequest={abCompareRequest} /></div>
         </div>
       </main>
 
@@ -1804,6 +1829,9 @@ export function App() {
         onRunForecastJob={runForecastJob}
         onRetryForecastJob={retryForecastJob}
         onResumeForecastJob={resumeForecastJob}
+        tribeDescriptors={tribeDescriptors}
+        onSeek={seekVideo}
+        onOpenAbCompare={openAbCompareForExperiment}
       />
     </div>
   );

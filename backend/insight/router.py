@@ -122,6 +122,21 @@ def create_insight_router(
             raise _http_error(404, "insight_not_found", "Insight artifact was not found.")
         return JSONResponse(artifact, headers=PRIVATE_NO_STORE_HEADERS)
 
+    @router.get("/results/{insight_id}/evidence")
+    def get_insight_evidence(insight_id: str) -> JSONResponse:
+        identifier = _result_id(insight_id, "insightId")
+        try:
+            bundle = active_service.read_bundle(identifier)
+        except InsightStoreError as exc:
+            raise _http_error(
+                500, "insight_storage_failed", "Stored insight state is unreadable."
+            ) from exc
+        if bundle is None:
+            raise _http_error(
+                404, "evidence_not_found", "Insight evidence was not found."
+            )
+        return JSONResponse(bundle, headers=PRIVATE_NO_STORE_HEADERS)
+
     @router.get("/rejections/{rejection_id}")
     def get_rejection(rejection_id: str) -> JSONResponse:
         identifier = _result_id(rejection_id, "rejectionId")
