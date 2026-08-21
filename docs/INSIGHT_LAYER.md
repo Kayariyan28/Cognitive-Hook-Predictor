@@ -291,3 +291,31 @@ observation is still `numeric_not_in_evidence`.
 Everything else binds as tightly as before. A proposed line that promises an
 audience outcome or names a viewer's mental state is refused like any other
 text, and the env-gated judge audits proposed lines alongside the rest.
+
+## The calibration candidate harness
+
+`backend/insight/personal_head.py` trains and evaluates a **single-creator
+calibration candidate**. It approves nothing, and it is the only part of this
+project that goes anywhere near a probability.
+
+What it does: joins creator-declared outcome labels to measured evidence, sorts
+strictly by posting time, holds out the most recent 30% chronologically, fits a
+small logistic model on the shared metric list, and reports the numbers the
+production gate would want — Brier score, log loss, expected calibration error,
+calibration slope and intercept — alongside the creator's own base rate.
+
+What it refuses: fewer than 30 labelled clips, a holdout too small to mean
+anything, a count metric with no declared threshold ("a lot of views" is not a
+target), labels that never vary, and any test clip whose feature vector is
+identical to a training clip.
+
+What it produces is a review document with `approved: false`,
+`scoringAvailable: false`, and an explicit blocker list — starting, when it
+applies, with the most important line it can print: *this candidate does not
+beat predicting the creator's own base rate, so it carries no information a
+constant would not.*
+
+Three tests hold the boundary: the harness cannot assign to
+`APPROVED_TARGET_CONTRACTS`, that table is asserted still empty, and the
+manifest carries no per-clip score a UI could render. Approval remains what it
+was — a reviewed code change, made by a person who has read these numbers.
