@@ -7,7 +7,7 @@
  * than rendering half of one.
  */
 
-export const INSIGHT_SCHEMA_VERSION = "insight/1";
+export const INSIGHT_SCHEMA_VERSION = "insight/2";
 export const INSIGHT_BUNDLE_SCHEMA_VERSION = "insight-evidence-bundle/2";
 export const HYPOTHESIS_LABEL = "untested heuristic";
 
@@ -25,6 +25,8 @@ export const INSIGHT_LANES = Object.freeze([
 export const EFFORT_ORDER = Object.freeze(["low", "medium", "high"]);
 export const PHASE_ORDER = Object.freeze(["early", "middle", "late"]);
 export const DIRECTIONS = Object.freeze(["increase", "decrease", "unchanged"]);
+export const REWRITE_BASES = Object.freeze(["spoken", "on-screen"]);
+export const MAXIMUM_REWRITE_CHARACTERS = 160;
 
 const CITATION_PATTERN =
   /^([a-z][a-z0-9]*):(\/[^@]*)(?:@window\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\))?$/;
@@ -226,6 +228,23 @@ export function validateInsightArtifact(payload) {
       experiments: requireArray(hookReport.experiments, "hookReport experiments")
         .map((item, index) => validateExperiment(item, index, hypothesisIds)),
     },
+    hookRewrites: requireArray(record.hookRewrites ?? [], "hookRewrites").map((item, index) => {
+      const label = `rewrite ${index + 1}`;
+      const entry = requireObject(item, label);
+      if (!REWRITE_BASES.includes(entry.basis)) {
+        throw contractError(`${label} declares an unknown basis.`);
+      }
+      const line = requireText(entry.line, `${label} line`);
+      if (line.length > MAXIMUM_REWRITE_CHARACTERS) {
+        throw contractError(`${label} exceeds ${MAXIMUM_REWRITE_CHARACTERS} characters.`);
+      }
+      const citations = requireArray(entry.citations, `${label} citations`);
+      if (!citations.length) throw contractError(`${label} carries no citation.`);
+      for (const citation of citations) {
+        if (!parseCitation(citation)) throw contractError(`${label} carries a malformed citation.`);
+      }
+      return { line, basis: entry.basis, citations: Object.freeze([...citations]) };
+    }),
     phaseCommentary: requireArray(record.phaseCommentary, "phaseCommentary").map((item, index) => {
       const entry = requireObject(item, `phase note ${index + 1}`);
       if (!PHASE_ORDER.includes(entry.phase)) {

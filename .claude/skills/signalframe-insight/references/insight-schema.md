@@ -119,7 +119,7 @@ lane      = "measured" | "nanollava" | "ast" | "vjepa" | "asr" | "ocr" | "contex
 
 ```json
 {
-  "schemaVersion": "insight/1",
+  "schemaVersion": "insight/2",
   "insightId": "…",
   "generatedAt": "…",
   "hookReport": {
@@ -134,6 +134,7 @@ lane      = "measured" | "nanollava" | "ast" | "vjepa" | "asr" | "ocr" | "contex
                                                           "direction": "increase" } ],
                                "citations": ["…"] } ]
   },
+  "hookRewrites":    [ { "line": "…", "basis": "spoken", "citations": ["…"] } ],
   "phaseCommentary": [ { "phase": "early", "text": "…", "citations": ["…"] } ],
   "tribeNotes":      [ { "text": "…", "citations": ["tribe:/…"] } ],
   "behavioralOutcome": false,
@@ -144,7 +145,8 @@ lane      = "measured" | "nanollava" | "ast" | "vjepa" | "asr" | "ocr" | "contex
 
 ### Model-settable versus server-owned
 
-The model returns **only** `hookReport`, `phaseCommentary`, and `tribeNotes`. Presence of any
+The model returns **only** `hookReport`, `hookRewrites`, `phaseCommentary`, and
+`tribeNotes`. Presence of any
 other top-level key in the model's JSON is `server_owned_field` (for `insightId`,
 `generatedAt`, `behavioralOutcome`, `limits`, `provenance`, `schemaVersion`) or
 `unknown_field` (for anything else). The server injects the owned fields after validation.
@@ -156,6 +158,7 @@ other top-level key in the model's JSON is `server_owned_field` (for `insightId`
   bundle was sliced to. A full-bundle generation uses `[0.0, 3.0]` only if the caller asked
   for the hook window; otherwise `hookReport` may be absent.
 - Text fields: 1–400 characters after stripping, no control characters.
+- `line`: 1–160 characters; `basis` ∈ `{"spoken","on-screen"}`; 0–4 rewrites.
 - `edit`: 1–400 characters.
 - `label` must be exactly `"untested heuristic"`.
 - `effort` ∈ `{"low","medium","high"}`.
@@ -184,6 +187,10 @@ A numeral `n` is accepted when any of the following holds against some reachable
 3. The numeral is written with a trailing `%` and rule 1 or 2 holds for `v * 100`.
 4. The numeral equals the start or end of the requested window (times equal to the requested
    window are exempt).
+5. The numeral sits inside a `hookRewrites` line. A proposed replacement line is a
+   suggestion the creator may record, not an assertion about this clip, so the evidence is
+   not required to contain its numbers. **Every claim-boundary rule still applies to it in
+   full**, and no other field carries this exemption.
 
 Anything else is `numeric_not_in_evidence`. Ordinal words ("first", "second") are words, not
 numerals, and are unaffected.

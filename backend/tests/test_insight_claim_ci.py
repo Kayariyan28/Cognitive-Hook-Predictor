@@ -43,6 +43,10 @@ PHASE_TEN_FIXTURES = frozenset(
         "outcomes_lane_citation.json",
         "comparative_rank_valid_twin.json",
         "comparative_verdict_claim.json",
+        "rewrite_valid_twin.json",
+        "rewrite_outcome_claim.json",
+        "rewrite_too_long.json",
+        "rewrite_unknown_basis.json",
     }
 )
 

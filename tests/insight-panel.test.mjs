@@ -67,7 +67,10 @@ function bundleFixture({ tribe = "present" } = {}) {
 
 function artifactFixture(overrides = {}) {
   return {
-    schemaVersion: "insight/1",
+    schemaVersion: "insight/2",
+    hookRewrites: [
+      { line: "Stop scrolling — 3 things changed this kitchen.", basis: "spoken", citations: ["nanollava:/keyframes/0/parsed"] },
+    ],
     insightId: "d".repeat(32),
     generatedAt: "2026-02-01T10:00:05Z",
     source: { forecastResultId: "a".repeat(32), tribeResultId: null, window: null },
@@ -137,7 +140,7 @@ function artifactFixture(overrides = {}) {
 
 test("a valid artifact fixture passes contract validation", () => {
   const artifact = validateInsightArtifact(artifactFixture());
-  assert.equal(artifact.schemaVersion, "insight/1");
+  assert.equal(artifact.schemaVersion, "insight/2");
   assert.equal(artifact.behavioralOutcome, false);
   assert.equal(artifact.hookReport.hypotheses[0].label, HYPOTHESIS_LABEL);
   assert.equal(artifact.provenance.modelRevision, "b".repeat(40));
@@ -549,4 +552,27 @@ test("a variant comparison never claims an outcome", () => {
   assert.equal(presented.behavioralOutcome, false);
   assert.match(presented.limits, /not better/);
   assert.equal(presentVariantComparison(null), null);
+});
+
+test("a proposed rewrite line is validated for shape and citation", () => {
+  const artifact = validateInsightArtifact(artifactFixture());
+  assert.equal(artifact.hookRewrites.length, 1);
+  assert.equal(artifact.hookRewrites[0].basis, "spoken");
+  assert.match(artifact.hookRewrites[0].line, /Stop scrolling/);
+});
+
+test("a rewrite with an unknown basis or no citation is refused", () => {
+  const missingBasis = artifactFixture();
+  missingBasis.hookRewrites[0].basis = "whispered";
+  assert.throws(() => validateInsightArtifact(missingBasis), /unknown basis/);
+
+  const uncited = artifactFixture();
+  uncited.hookRewrites[0].citations = [];
+  assert.throws(() => validateInsightArtifact(uncited), /carries no citation/);
+});
+
+test("an artifact with no rewrites is still valid", () => {
+  const payload = artifactFixture();
+  delete payload.hookRewrites;
+  assert.deepEqual(validateInsightArtifact(payload).hookRewrites, []);
 });

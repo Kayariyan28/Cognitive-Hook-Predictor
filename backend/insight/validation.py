@@ -25,9 +25,9 @@ from .citations import (
 from .claim_terms import sentence_violations, split_sentences
 
 
-INSIGHT_SCHEMA_VERSION = "insight/1"
+INSIGHT_SCHEMA_VERSION = "insight/2"
 
-MODEL_SETTABLE_KEYS = ("hookReport", "phaseCommentary", "tribeNotes")
+MODEL_SETTABLE_KEYS = ("hookReport", "hookRewrites", "phaseCommentary", "tribeNotes")
 SERVER_OWNED_KEYS = frozenset(
     {"schemaVersion", "insightId", "generatedAt", "behavioralOutcome", "limits", "provenance"}
 )
@@ -56,6 +56,8 @@ PHASE_VALUES = frozenset({"early", "middle", "late"})
 HYPOTHESIS_LABEL = "untested heuristic"
 
 MAXIMUM_TEXT_CHARACTERS = 400
+MAXIMUM_REWRITE_CHARACTERS = 160
+REWRITE_BASES = frozenset({"spoken", "on-screen"})
 MAXIMUM_CITATIONS_PER_ITEM = 6
 ARRAY_BOUNDS = {
     "whatTheHookContains": (1, 8),
@@ -65,6 +67,7 @@ ARRAY_BOUNDS = {
     "expectedSignalShift": (1, 4),
     "phaseCommentary": (0, 3),
     "tribeNotes": (0, 4),
+    "hookRewrites": (0, 4),
 }
 
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
@@ -95,6 +98,10 @@ class Item:
     texts: tuple[tuple[str, str], ...]
     citations: tuple[Citation, ...]
     tribe_scoped: bool
+    # A proposed replacement line is a suggestion, not an assertion about the
+    # clip, so a numeral inside it is not a claim the evidence must contain.
+    # Every claim-boundary rule still applies to it in full.
+    numeric_exempt: bool = False
 
 
 # --------------------------------------------------------------------------
@@ -266,6 +273,38 @@ def _experiment_item(value: Any, path: str) -> tuple[Item, str, str, list[Citati
     return item, identifier, hypothesis_id, metric_citations
 
 
+def _rewrite_item(value: Any, path: str) -> Item:
+    record = _require_object(value, path)
+    _closed_keys(record, ("line", "basis", "citations"), path)
+    for key in ("line", "basis", "citations"):
+        if key not in record:
+            if key == "citations":
+                raise _reject("missing_citation", f"{path} carries no citation")
+            raise _reject("schema_invalid", f"{path}/{key} is required")
+    if record["basis"] not in REWRITE_BASES:
+        raise _reject(
+            "schema_invalid", f"{path}/basis must be one of {sorted(REWRITE_BASES)}"
+        )
+    line = record["line"]
+    if not isinstance(line, str) or not line.strip():
+        raise _reject("schema_invalid", f"{path}/line must be a non-empty string")
+    if len(line.strip()) > MAXIMUM_REWRITE_CHARACTERS:
+        raise _reject(
+            "schema_invalid",
+            f"{path}/line exceeds the {MAXIMUM_REWRITE_CHARACTERS}-character limit",
+        )
+    if CONTROL_CHARACTER_RE.search(line):
+        raise _reject("schema_invalid", f"{path}/line contains control characters")
+    citations = _citations(record["citations"], path)
+    return Item(
+        path=path,
+        texts=((f"{path}/line", line.strip()),),
+        citations=citations,
+        tribe_scoped=_is_tribe_scoped(citations),
+        numeric_exempt=True,
+    )
+
+
 def _phase_item(value: Any, path: str) -> Item:
     record = _require_object(value, path)
     _closed_keys(record, ("phase", "text", "citations"), path)
@@ -374,6 +413,11 @@ def _structural_items(payload: Mapping[str, Any], expected_window: tuple[float, 
         raise _reject("schema_invalid", "/hookReport is required")
 
     items = _hook_report(payload["hookReport"], expected_window)
+
+    for index, entry in enumerate(
+        _bounded_array(payload.get("hookRewrites", []), "hookRewrites", "/hookRewrites")
+    ):
+        items.append(_rewrite_item(entry, f"/hookRewrites/{index}"))
 
     for index, entry in enumerate(
         _bounded_array(payload.get("phaseCommentary", []), "phaseCommentary", "/phaseCommentary")
@@ -526,6 +570,8 @@ def validate_insight(raw_json: Any, bundle: Mapping[str, Any]) -> dict[str, Any]
                             f"{item.path}/{index}/metricPath must point at a number",
                         )
                 continue
+            if item.numeric_exempt:
+                continue
             reachable = [
                 number for value in resolved for number in _reachable_numbers(value)
             ]
@@ -545,6 +591,7 @@ def validate_insight(raw_json: Any, bundle: Mapping[str, Any]) -> dict[str, Any]
 
     artifact = {
         "hookReport": payload["hookReport"],
+        "hookRewrites": payload.get("hookRewrites", []),
         "phaseCommentary": payload.get("phaseCommentary", []),
         "tribeNotes": payload.get("tribeNotes", []),
     }

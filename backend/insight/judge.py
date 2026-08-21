@@ -82,6 +82,9 @@ def collect_items(artifact: Mapping[str, Any]) -> list[dict[str, Any]]:
                     entry.get("edit"),
                     entry.get("citations"),
                 )
+    for index, entry in enumerate(artifact.get("hookRewrites") or ()):
+        if isinstance(entry, Mapping):
+            add(f"/hookRewrites/{index}/line", entry.get("line"), entry.get("citations"))
     for name in ("phaseCommentary", "tribeNotes"):
         for index, entry in enumerate(artifact.get(name) or ()):
             if isinstance(entry, Mapping):

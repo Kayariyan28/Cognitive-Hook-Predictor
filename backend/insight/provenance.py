@@ -32,7 +32,7 @@ def output_hash(artifact: Mapping[str, Any]) -> str:
 
     settable = {
         key: artifact[key]
-        for key in ("hookReport", "phaseCommentary", "tribeNotes")
+        for key in ("hookReport", "hookRewrites", "phaseCommentary", "tribeNotes")
         if key in artifact
     }
     return hashlib.sha256(canonical_json(settable).encode("utf-8")).hexdigest()

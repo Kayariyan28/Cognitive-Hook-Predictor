@@ -157,7 +157,8 @@ class AllOrNothingTests(unittest.TestCase):
         outcome = validate_insight(load("valid_full_artifact.json"), golden_bundle())
         self.assertEqual(outcome["status"], "valid")
         self.assertEqual(
-            sorted(outcome["artifact"]), ["hookReport", "phaseCommentary", "tribeNotes"]
+            sorted(outcome["artifact"]),
+            ["hookReport", "hookRewrites", "phaseCommentary", "tribeNotes"],
         )
 
     def test_malformed_json_is_never_repaired(self):

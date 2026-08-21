@@ -20,7 +20,7 @@ from ..claim_terms import (
 )
 
 
-PROMPT_TEMPLATE_ID = "hook-doctor.v2"
+PROMPT_TEMPLATE_ID = "hook-doctor.v3"
 
 # A distilled restatement of docs/SCIENTIFIC_LIMITS.md. It is deliberately
 # short: the deterministic validator, not this paragraph, is what enforces it.
@@ -62,7 +62,7 @@ three keys:
 
 {{"hookReport": {{"windowSeconds": [start, end], "whatTheHookContains": [...],
 "observations": [...], "hypotheses": [...], "experiments": [...]}},
-"phaseCommentary": [...], "tribeNotes": [...]}}
+"hookRewrites": [...], "phaseCommentary": [...], "tribeNotes": [...]}}
 
 - `whatTheHookContains` and `observations` items: {{"text": "...", "citations": ["..."]}}
 - `hypotheses` items: {{"id": "h1", "text": "...", "label": "untested heuristic",
@@ -72,6 +72,8 @@ three keys:
   "expectedSignalShift": [{{"metricPath": "...", "direction": "increase"|"decrease"|"unchanged"}}],
   "citations": ["..."]}}
 - `phaseCommentary` items: {{"phase": "early"|"middle"|"late", "text": "...",
+  "citations": ["..."]}}
+- `hookRewrites` items: {{"line": "...", "basis": "spoken"|"on-screen",
   "citations": ["..."]}}
 - `tribeNotes` items: {{"text": "...", "citations": ["tribe:/..."]}}
 
@@ -87,6 +89,19 @@ followed by `@window(start,end)`. The pointer is resolved inside that lane. Exam
 
 A citation that does not resolve in the bundle you were given voids the whole response.
 `metricPath` must be a citation without a window that points at a number.
+
+## Rewrites
+
+`hookRewrites` is where you propose up to four concrete replacement opening lines: the
+words the creator could say (`"basis": "spoken"`) or put on screen (`"basis": "on-screen"`).
+Keep each under 160 characters, and cite the evidence the suggestion responds to — the
+transcript line you are replacing, the on-screen text, or the measured silence you are
+filling.
+
+A proposed line is a suggestion, not a claim about this clip, so a number inside a line does
+not have to appear in the evidence. Everything else still applies: a line that promises an
+audience outcome or names a viewer's mental state is refused like any other text. Write lines
+a person would actually say, not slogans about performance.
 
 ## Comparative context
 

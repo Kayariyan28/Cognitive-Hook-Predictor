@@ -274,3 +274,20 @@ number that decides the comparison.
 
 Neither route ranks a cut as better. Higher is not better and lower is not
 worse: no cut in this system has been shown to an audience.
+
+## Rewrite candidates
+
+`hookRewrites` is where the model proposes up to four concrete replacement
+opening lines — words to say (`basis: "spoken"`) or to put on screen
+(`basis: "on-screen"`) — each citing the evidence it responds to.
+
+One rule differs here, deliberately. **A numeral inside a proposed line does not
+have to appear in the evidence**, because the line is a suggestion the creator
+may record, not an assertion about the clip that exists. "Three things you need"
+is a script, not a measurement. The exemption is narrow: it applies to
+`hookRewrites` lines and to nothing else, and the identical numeral in an
+observation is still `numeric_not_in_evidence`.
+
+Everything else binds as tightly as before. A proposed line that promises an
+audience outcome or names a viewer's mental state is refused like any other
+text, and the env-gated judge audits proposed lines alongside the rest.

@@ -250,8 +250,8 @@ class ComparativeServiceTests(unittest.TestCase):
         artifact, _ = service.generate(
             InsightRequest(FORECAST_RESULT_ID, tribe_descriptors=tribe_descriptors())
         )
-        self.assertEqual(artifact["schemaVersion"], "insight/1")
-        self.assertEqual(artifact["provenance"]["promptTemplateId"], "hook-doctor.v2")
+        self.assertEqual(artifact["schemaVersion"], "insight/2")
+        self.assertEqual(artifact["provenance"]["promptTemplateId"], "hook-doctor.v3")
 
 
 class OutcomeImportTests(unittest.TestCase):
@@ -525,3 +525,62 @@ class OutcomeEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RewriteCandidateTests(unittest.TestCase):
+    """Roadmap step 5: proposed opening lines, and what still binds them."""
+
+    def bundle(self):
+        return assemble_evidence_bundle(
+            forecast_result(), tribe_descriptors=tribe_descriptors()
+        )
+
+    def validate(self, fixture: str):
+        return validate_insight(
+            (FIXTURES / fixture).read_text(encoding="utf-8"), self.bundle()
+        )
+
+    def test_a_proposed_line_may_carry_a_numeral_the_evidence_lacks(self):
+        outcome = self.validate("rewrite_valid_twin.json")
+        self.assertEqual(outcome["status"], "valid", outcome)
+        rewrites = outcome["artifact"]["hookRewrites"]
+        self.assertEqual(len(rewrites), 2)
+        self.assertIn("3 things", rewrites[0]["line"])
+        self.assertEqual(rewrites[1]["basis"], "on-screen")
+
+    def test_the_same_numeral_in_an_observation_is_still_refused(self):
+        payload = json.loads((FIXTURES / "rewrite_valid_twin.json").read_text())
+        # 3 would be exempt: it equals the requested window's end. Use a
+        # numeral with no such excuse.
+        payload["hookReport"]["observations"][0] = {
+            "text": "The opening names 7 things.",
+            "citations": ["nanollava:/keyframes/0/parsed"],
+        }
+        outcome = validate_insight(json.dumps(payload), self.bundle())
+        self.assertEqual(outcome["reasonCode"], "numeric_not_in_evidence")
+
+    def test_a_proposed_line_that_promises_an_outcome_is_refused(self):
+        outcome = self.validate("rewrite_outcome_claim.json")
+        self.assertEqual(outcome["reasonCode"], "claim_boundary_violation")
+        self.assertEqual(outcome["detail"]["term"], "views")
+        self.assertEqual(outcome["detail"]["itemPath"], "/hookRewrites/0/line")
+
+    def test_rewrite_shape_is_enforced(self):
+        self.assertEqual(self.validate("rewrite_too_long.json")["reasonCode"], "schema_invalid")
+        self.assertEqual(
+            self.validate("rewrite_unknown_basis.json")["reasonCode"], "schema_invalid"
+        )
+
+    def test_rewrites_are_optional_and_default_to_none(self):
+        outcome = validate_insight(
+            (FIXTURES / "valid_full_artifact.json").read_text(encoding="utf-8"), self.bundle()
+        )
+        self.assertEqual(outcome["status"], "valid")
+        self.assertEqual(outcome["artifact"]["hookRewrites"], [])
+
+    def test_the_judge_audits_proposed_lines_too(self):
+        from backend.insight.judge import collect_items
+
+        artifact = json.loads((FIXTURES / "rewrite_valid_twin.json").read_text())
+        paths = {item["itemPath"] for item in collect_items(artifact)}
+        self.assertIn("/hookRewrites/0/line", paths)

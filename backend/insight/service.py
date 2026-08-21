@@ -323,6 +323,7 @@ class InsightService:
                 "window": bundle["source"].get("window"),
             },
             "hookReport": model_fields["hookReport"],
+            "hookRewrites": model_fields["hookRewrites"],
             "phaseCommentary": model_fields["phaseCommentary"],
             "tribeNotes": model_fields["tribeNotes"],
             "behavioralOutcome": False,
