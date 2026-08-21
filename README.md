@@ -59,6 +59,7 @@ model-target BOLD values—not attention, engagement, emotion, or virality.*
 | 3D cortical map | Genuine TRIBE v2 `T x 20,484` `fsaverage5` tensor only | Predicted average-subject BOLD; never colored by local content scores |
 | Creator report | Tensor-derived time, continuity, magnitude, change, and Destrieux parcel summaries | Descriptive neural-model output; not emotion, memory, or engagement |
 | Behavioral forecast heads | Fail-closed production-calibration registry | Values stay withheld until an approved head is installed |
+| Insight lane and Hook Doctor | Local pinned MLX model over a cited evidence bundle, with a deterministic validator | Descriptive language about measured evidence; every hypothesis is an untested heuristic |
 
 The UI also contains a local **Modeled Engagement** index and a transparent
 **Virality Outlook** assembled from measured content features. These are
@@ -215,6 +216,10 @@ complete clean-machine instructions and verified hashes are in
 | `POST` | `/api/forecast/v1/jobs` | Submit a private 10–60 second evidence job |
 | `GET` | `/api/forecast/v1/jobs/{id}` | Poll durable job state and real stages |
 | `GET` | `/api/forecast/v1/results/{id}` | Retrieve an atomically published evidence result |
+| `GET` | `/api/insight/v1/status` | Insight provider readiness, pinned model, prompt version |
+| `POST` | `/api/insight/v1/generate` | Generate one cited, validated descriptive insight artifact |
+| `GET` | `/api/insight/v1/results/{id}` | Retrieve a published insight artifact |
+| `GET` | `/api/insight/v1/rejections/{id}` | Retrieve a persisted insight rejection record |
 
 Detailed request, binary tensor, caching, and registry contracts are in
 [backend/README.md](backend/README.md) and
@@ -247,6 +252,8 @@ jobs, model workers, result caching, and fail-closed calibrated heads.
   persistence
 - [Scientific limits](docs/SCIENTIFIC_LIMITS.md) — what every output can and
   cannot support
+- [Insight lane](docs/INSIGHT_LAYER.md) — the evidence bundle, the citation
+  grammar, and the three enforcement layers
 - [Publish to GitHub](docs/PUBLISH_TO_GITHUB.md) — secret-safe first push under
   your own Git identity
 - [Forecast architecture](FORECAST_ARCHITECTURE.md) — calibration requirements

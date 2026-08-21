@@ -39,9 +39,13 @@ from .errors import (
     UploadValidationError,
 )
 from .forecast.router import create_forecast_router
-from .forecast.jobs import ForecastJobService
+from .forecast.jobs import ForecastJobService, JobStoreError
 from .forecast.orchestrator import MultimodalEvidenceOrchestrator
 from .forecast.registry import ForecastRegistry
+from .insight.bundle import BundleUnavailableError
+from .insight.config import InsightSettings
+from .insight.router import create_insight_router
+from .insight.service import InsightService
 from .model_runtime import TribeRuntime
 from .result_cache import (
     CacheIdentity,
@@ -74,6 +78,23 @@ forecast_orchestrator = MultimodalEvidenceOrchestrator.from_env(
     forecast_registry=forecast_registry
 )
 forecast_jobs = ForecastJobService.from_env(orchestrator=forecast_orchestrator)
+insight_settings = InsightSettings.from_env()
+
+
+def load_completed_forecast_result(result_id: str) -> dict[str, Any] | None:
+    """Read one published forecast result; unreadable state fails closed."""
+
+    try:
+        return forecast_jobs.store.read_result(result_id)
+    except JobStoreError as exc:
+        raise BundleUnavailableError(
+            f"the stored forecast result {result_id} is unreadable"
+        ) from exc
+
+
+insight_service = InsightService(
+    insight_settings, forecast_result_loader=load_completed_forecast_result
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +250,7 @@ app.include_router(
         job_service=forecast_jobs,
     )
 )
+app.include_router(create_insight_router(service=insight_service))
 
 
 @app.get("/api/tribe/v1/health")
