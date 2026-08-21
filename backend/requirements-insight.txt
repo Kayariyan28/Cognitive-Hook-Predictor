@@ -1,0 +1,24 @@
+# Optional insight-layer dependencies. Apple silicon only; no CUDA path exists
+# for any of these. Install into the same Python 3.11 environment as
+# backend/requirements.txt when you want the insight lane, the transcript lane,
+# or the on-screen-text lane.
+#
+#   "$SIGNALFRAME_BACKEND_PYTHON" -m pip install -r backend/requirements-insight.txt
+#
+# The model-free CI job deliberately installs none of this: every adapter
+# imports its dependency lazily and reports `unavailable` when it is absent.
+
+# Local insight generation (default provider).
+mlx-lm==0.28.4
+
+# Optional remote provider. Reached only when INSIGHT_CLOUD_ENABLED=true and
+# ANTHROPIC_API_KEY is set; the payload is derived JSON evidence only.
+anthropic==0.75.0
+
+# Transcript evidence branch.
+mlx-whisper==0.4.3
+
+# On-screen-text evidence branch. ocrmac wraps Apple Vision; pytesseract is the
+# optional fallback and additionally needs the `tesseract` binary on PATH.
+ocrmac==1.0.0
+pytesseract==0.3.13
