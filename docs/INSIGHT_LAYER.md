@@ -89,6 +89,39 @@ how much they are trusted:
    twins that must keep passing. An env-gated LLM judge exists as a tripwire
    for phrasing the term lists do not catch; it never runs in the request path.
 
+### How the three layers relate
+
+They are not three copies of one rule. They sit in a strict order of trust, and
+each one exists because the one before it can fail.
+
+| Layer | Where | What it can do | Why it is not enough |
+| --- | --- | --- | --- |
+| Prompt | `backend/insight/prompts/hook_doctor_v1.py` | Make a compliant model produce compliant text most of the time | A model can ignore any instruction; nothing verifies that it did not |
+| Validator | `backend/insight/validation.py` | Decide, deterministically, whether an artifact may be published at all | It can only catch what its vocabulary and rules describe |
+| CI fixtures and judge | `backend/tests/insight_fixtures/`, `backend/insight/judge.py` | Prove the validator still catches what it caught yesterday, and notice phrasing the vocabulary misses | The judge is itself a model, and it never gates a request |
+
+The consequences of that ordering are the rules to work by:
+
+- **Only layer 2 publishes or refuses.** Layers 1 and 3 never gate a request.
+  `judge.py` is not imported by the service, the router, the validator, or the
+  bundle assembler, and a test asserts that.
+- **When the model violates a boundary, layer 1 changes.** Loosening the
+  validator to make output pass is a defect, not a fix.
+- **When the validator misses a violation, layer 3 found it — extend layer 2.**
+  Add the term or rule to `claim_terms.py`, add the red-team fixture and its
+  valid twin, and let the fixture keep the rule alive.
+- **The vocabulary lives in one module.** `claim_terms.py` is the source;
+  `src/insight/claim-terms.json` is generated from it, and a test fails if the
+  two drift or if a second hard-coded list appears anywhere in the repository.
+- **The frontend is checked too.** `tests/insight-claim-terms.test.mjs` reads
+  that exported JSON and fails when an insight component hard-codes a forbidden
+  outcome or mental-state claim in its own strings — a rule the model-facing
+  layers cannot enforce, because those strings were written by us.
+
+The judge runs only when `INSIGHT_JUDGE_ENABLED` is set and a provider is
+configured; it is skipped by default and in CI. An unreadable verdict from it
+is treated as a failure, never as a clean pass.
+
 ## The numeric-copy rule
 
 Numbers in insight text must be copies of the evidence the item cites. A

@@ -121,6 +121,13 @@ class MlxLocalProvider:
     # -- generation --------------------------------------------------------
 
     def generate(self, bundle: Mapping[str, Any], *, hook_only: bool) -> GenerationResult:
+        return self.generate_text(
+            system_prompt(), build_user_message(bundle, hook_only=hook_only)
+        )
+
+    def generate_text(self, system: str, user: str) -> GenerationResult:
+        """One text call. The insight lane and the CI judge share this path."""
+
         state = self.availability()
         if not state.available:
             raise ProviderUnavailableError(state.reason)
@@ -132,7 +139,7 @@ class MlxLocalProvider:
         started = time.monotonic()
         try:
             model, tokenizer = self._load(snapshot)
-            prompt = self._render_prompt(tokenizer, bundle, hook_only=hook_only)
+            prompt = self._render_prompt(tokenizer, system, user)
             raw_output = self._run(model, tokenizer, prompt)
         except ProviderUnavailableError:
             raise
@@ -158,12 +165,10 @@ class MlxLocalProvider:
 
         return load(snapshot)
 
-    def _render_prompt(
-        self, tokenizer: Any, bundle: Mapping[str, Any], *, hook_only: bool
-    ) -> str:
+    def _render_prompt(self, tokenizer: Any, system: str, user: str) -> str:
         messages = [
-            {"role": "system", "content": system_prompt()},
-            {"role": "user", "content": build_user_message(bundle, hook_only=hook_only)},
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ]
         template = getattr(tokenizer, "apply_chat_template", None)
         if callable(template):

@@ -13,7 +13,7 @@
     "dev": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
     "preview": "vite preview",
-    "test": "node --test tests/analysis-runtime.test.mjs tests/atlas.test.mjs tests/creator-forecast.test.mjs tests/forecast-job-client.test.mjs tests/forecast-lab-ui.test.mjs tests/inference-ui.test.mjs tests/insight-panel.test.mjs tests/mesh-asset-runtime.test.mjs tests/no-gimmick.test.mjs tests/sites-worker.test.mjs tests/tribe-ab-cut-lab.test.mjs tests/tribe-contract.test.mjs tests/tribe-descriptors.test.mjs tests/tribe-frame-intervals.test.mjs tests/tribe-frame.test.mjs tests/tribe-panel-layout.test.mjs tests/tribe-plain-language-report.test.mjs tests/tribe-variant-comparison.test.mjs tests/video-thumbnails.test.mjs",
+    "test": "node --test tests/analysis-runtime.test.mjs tests/atlas.test.mjs tests/creator-forecast.test.mjs tests/forecast-job-client.test.mjs tests/forecast-lab-ui.test.mjs tests/inference-ui.test.mjs tests/insight-claim-terms.test.mjs tests/insight-panel.test.mjs tests/mesh-asset-runtime.test.mjs tests/no-gimmick.test.mjs tests/sites-worker.test.mjs tests/tribe-ab-cut-lab.test.mjs tests/tribe-contract.test.mjs tests/tribe-descriptors.test.mjs tests/tribe-frame-intervals.test.mjs tests/tribe-frame.test.mjs tests/tribe-panel-layout.test.mjs tests/tribe-plain-language-report.test.mjs tests/tribe-variant-comparison.test.mjs tests/video-thumbnails.test.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:backend": "python -m unittest discover -s backend/tests -v",
     "check": "npm run build && npm test"

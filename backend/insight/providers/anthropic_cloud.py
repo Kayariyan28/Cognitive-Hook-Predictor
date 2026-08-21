@@ -115,6 +115,13 @@ class AnthropicProvider:
     # -- generation --------------------------------------------------------
 
     def generate(self, bundle: Mapping[str, Any], *, hook_only: bool) -> GenerationResult:
+        return self.generate_text(
+            system_prompt(), build_user_message(bundle, hook_only=hook_only)
+        )
+
+    def generate_text(self, system: str, user: str) -> GenerationResult:
+        """One text call. The insight lane and the CI judge share this path."""
+
         state = self.availability()
         if not state.available:
             raise ProviderUnavailableError(state.reason)
@@ -122,7 +129,7 @@ class AnthropicProvider:
         client = self._client()
         started_at = utc_now()
         started = time.monotonic()
-        message = self._create_with_retries(client, bundle, hook_only=hook_only)
+        message = self._create_with_retries(client, system, user)
         raw_output = _first_text_block(message)
         if not raw_output.strip():
             raise ProviderExecutionError("the remote provider returned no text")
@@ -144,19 +151,15 @@ class AnthropicProvider:
             api_key=self.settings.anthropic_api_key, timeout=self.settings.timeout_seconds
         )
 
-    def _create_with_retries(
-        self, client: Any, bundle: Mapping[str, Any], *, hook_only: bool
-    ) -> Any:
-        # The payload is the derived bundle and the static template. No media,
-        # no path, no identifier the operator did not already publish.
+    def _create_with_retries(self, client: Any, system: str, user: str) -> Any:
+        # The payload is derived JSON and a static template. No media, no path,
+        # no identifier the operator did not already publish.
         request = {
             "model": self.settings.anthropic_model,
             "max_tokens": self.settings.max_output_tokens,
             "temperature": self.settings.temperature,
-            "system": system_prompt(),
-            "messages": [
-                {"role": "user", "content": build_user_message(bundle, hook_only=hook_only)}
-            ],
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
         }
         last_error: BaseException | None = None
         for attempt in range(MAXIMUM_ATTEMPTS):
