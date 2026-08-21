@@ -319,3 +319,17 @@ Three tests hold the boundary: the harness cannot assign to
 `APPROVED_TARGET_CONTRACTS`, that table is asserted still empty, and the
 manifest carries no per-clip score a UI could render. Approval remains what it
 was — a reviewed code change, made by a person who has read these numbers.
+
+## Trying it without your own footage
+
+`scripts/make-demo-clip.sh` synthesizes a deterministic 14-second clip whose
+audio is deliberately silent for the first 1.4 seconds. Run the backend and the
+frontend, upload it, and press **Run server evidence**: the hook readout flags
+the opening silence against the 0.8-second convention and reports the four
+checks it could not measure, because no transcript, on-screen-text, V-JEPA or
+keyframe branch is configured on a bare install.
+
+Feeding that clip through `POST /api/insight/v1/recut` with `trim_start` and
+`seconds=1.4`, then analysing the result, moves the same check from flagged to
+clear and takes the measured silent-window fraction from 0.0986 to 0. That is
+the whole product thesis in two jobs, and every number in it is measured.
