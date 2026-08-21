@@ -257,6 +257,9 @@ jobs, model workers, result caching, and fail-closed calibrated heads.
   cannot support
 - [Insight lane](docs/INSIGHT_LAYER.md) — the evidence bundle, the citation
   grammar, and the three enforcement layers
+- [Architecture and capabilities (PDF)](docs/SignalFrame-Architecture-and-Capabilities.pdf)
+  — the complete inventory, what the system will not do, and how creators and
+  agencies use it
 - [Outcomes and retrieval](docs/OUTCOMES_AND_RETRIEVAL.md) — an unimplemented
   design proposal for manual outcome ingestion and per-creator comparison
 - [Publish to GitHub](docs/PUBLISH_TO_GITHUB.md) — secret-safe first push under
