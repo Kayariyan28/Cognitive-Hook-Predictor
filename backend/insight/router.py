@@ -117,6 +117,14 @@ def create_insight_router(
             },
         )
 
+    @router.post("/hook-readout")
+    def hook_readout(body: dict[str, Any] = Body(...)) -> JSONResponse:
+        """Deterministic timeline and checklist. This route never calls a model."""
+
+        request = _parse_request(body)
+        readout = active_service.hook_readout(request)
+        return JSONResponse(readout, headers=PRIVATE_NO_STORE_HEADERS)
+
     @router.get("/results/{insight_id}")
     def get_insight(insight_id: str) -> JSONResponse:
         identifier = _result_id(insight_id, "insightId")

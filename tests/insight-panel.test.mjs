@@ -405,3 +405,73 @@ test("presentExperiment refuses anything that is not a record", () => {
   assert.equal(presentExperiment(null), null);
   assert.equal(presentExperiment("nope"), null);
 });
+
+import {
+  CHECK_STATUS_LABELS,
+  layoutHookTimeline,
+  presentChecklist,
+  timelineLanes,
+} from "../src/insight/presentation.js";
+
+function readoutFixture(overrides = {}) {
+  return {
+    schemaVersion: "insight-hook-readout/1",
+    windowSeconds: [0, 3],
+    timeline: [
+      { kind: "spoken-segment", startSec: 0, endSec: 2.6, label: "Stop scrolling.", citation: "asr:/segments/0", value: null },
+      { kind: "audio-peak", startSec: 1.44, endSec: 1.504, label: "Measured peak", citation: "measured:/audio/energyPeaks/0", value: null },
+      { kind: "on-screen-text", startSec: 0, endSec: 0.4, label: "READ THIS", citation: "ocr:/frames/0", value: null },
+      { kind: "cortical-interval", startSec: 6, endSec: 7.5, label: "Outside the window", citation: "tribe:/intervals/4", value: 0.4 },
+    ],
+    checklist: [
+      { id: "first_words_late", label: "First spoken words", status: "clear", detail: "Speech starts 0 s in.", citations: ["asr:/segments/0/startSec"], measured: 0, threshold: 1.5, thresholdKind: "declared-convention" },
+      { id: "opening_silence", label: "Silence before the first sound peak", status: "flagged", detail: "The first measured energy peak arrives 1.44 s in.", citations: ["measured:/audio/onset/prePeakSilenceSec"], measured: 1.44, threshold: 0.8, thresholdKind: "declared-convention" },
+      { id: "no_opening_text", label: "On-screen text at the opening", status: "unmeasured", detail: "The branch published nothing.", citations: [], measured: null, threshold: null, thresholdKind: null },
+    ],
+    flaggedCount: 1,
+    unmeasuredCount: 1,
+    behavioralOutcome: false,
+    limits: "Every marker is a measurement already in this clip's evidence.",
+    ...overrides,
+  };
+}
+
+test("timeline markers are positioned as a share of the hook window", () => {
+  const laid = layoutHookTimeline(readoutFixture());
+  const peak = laid.find((marker) => marker.kind === "audio-peak");
+  assert.equal(Math.round(peak.leftPercent * 100) / 100, 48);
+  const speech = laid.find((marker) => marker.kind === "spoken-segment");
+  assert.equal(speech.leftPercent, 0);
+  assert.ok(speech.widthPercent > 80 && speech.widthPercent <= 100);
+});
+
+test("a marker outside the window is dropped, never clamped onto it", () => {
+  const laid = layoutHookTimeline(readoutFixture());
+  assert.equal(laid.some((marker) => marker.kind === "cortical-interval"), false);
+});
+
+test("an invalid window yields no timeline rather than a wrong one", () => {
+  assert.deepEqual(layoutHookTimeline(readoutFixture({ windowSeconds: [3, 3] })), []);
+  assert.deepEqual(layoutHookTimeline(null), []);
+});
+
+test("timeline lanes are grouped by evidence kind and keep only what is present", () => {
+  const lanes = timelineLanes(readoutFixture());
+  const kinds = lanes.map((lane) => lane.kind);
+  assert.deepEqual(kinds, ["audio-peak", "spoken-segment", "on-screen-text"]);
+  assert.ok(lanes.every((lane) => lane.markers.length > 0));
+});
+
+test("flagged checks sort first, and unmeasured is never shown as clear", () => {
+  const checks = presentChecklist(readoutFixture());
+  assert.deepEqual(checks.map((check) => check.status), ["flagged", "clear", "unmeasured"]);
+  assert.equal(checks[0].statusLabel, CHECK_STATUS_LABELS.flagged);
+  assert.equal(checks[2].statusLabel, CHECK_STATUS_LABELS.unmeasured);
+  assert.notEqual(checks[2].statusLabel, CHECK_STATUS_LABELS.clear);
+});
+
+test("a threshold is labelled a declared convention, not a calibrated boundary", () => {
+  const checks = presentChecklist(readoutFixture());
+  assert.equal(checks[0].isConvention, true);
+  assert.equal(checks[2].isConvention, false);
+});

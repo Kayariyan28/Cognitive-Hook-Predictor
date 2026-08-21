@@ -21,6 +21,7 @@ from .bundle import (
 )
 from .comparative import build_comparative, corpus_from_results, extract_metric_values
 from .config import InsightSettings
+from .hook_readout import build_hook_readout
 from .prompts.hook_doctor import PROMPT_TEMPLATE_ID, prompt_hash
 from .provenance import LIMITS_STATEMENT, build_provenance, cache_key
 from .providers import (
@@ -193,6 +194,22 @@ class InsightService:
                 False,
             )
         return artifact, False
+
+    def hook_readout(self, request: InsightRequest) -> dict[str, Any]:
+        """The deterministic hook readout. No provider is consulted at all."""
+
+        try:
+            bundle = self._bundle(
+                InsightRequest(
+                    forecast_result_id=request.forecast_result_id,
+                    tribe_result_id=request.tribe_result_id,
+                    tribe_descriptors=request.tribe_descriptors,
+                    hook_only=True,
+                )
+            )
+        except BundleUnavailableError as exc:
+            return self._unavailable("bundle_unavailable", str(exc))
+        return build_hook_readout(bundle)
 
     def read_artifact(self, insight_id: str) -> dict[str, Any] | None:
         return self.store.read_artifact(insight_id)

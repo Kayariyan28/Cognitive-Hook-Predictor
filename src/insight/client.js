@@ -123,6 +123,34 @@ export async function generateInsight(
   }
 }
 
+/**
+ * Fetch the deterministic hook readout: a timeline and a checklist computed
+ * entirely from measurements. This route never calls a model, so it works when
+ * no provider is installed.
+ */
+export async function fetchHookReadout(
+  { forecastResultId, tribeResultId = null, tribeDescriptors = null },
+  { signal, baseUrl } = {},
+) {
+  const config = configuration(baseUrl);
+  const body = { forecastResultId };
+  if (tribeResultId) body.tribeResultId = tribeResultId;
+  if (tribeDescriptors) body.tribeDescriptors = tribeDescriptors;
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/hook-readout`, {
+    method: "POST",
+    signal,
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  if (payload?.unavailable === true) {
+    return Object.freeze({ status: "unavailable", document: payload });
+  }
+  return Object.freeze({ status: "available", readout: payload });
+}
+
 /** Fetch the exact evidence a published artifact cites, for the chips. */
 export async function fetchInsightEvidence(insightId, { signal, baseUrl } = {}) {
   const config = configuration(baseUrl);

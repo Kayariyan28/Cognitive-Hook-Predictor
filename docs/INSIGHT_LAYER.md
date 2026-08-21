@@ -149,6 +149,7 @@ conversion, or equals a bound of the requested window. Anything else is
 | Route | Purpose |
 | --- | --- |
 | `GET /api/insight/v1/status` | Provider readiness, pinned model identity and revision, prompt template version, config summary. The API key appears only as a boolean. |
+| `POST /api/insight/v1/hook-readout` | The deterministic timeline and checklist. Never calls a model, so it works with no provider installed. |
 | `POST /api/insight/v1/generate` | Body `{forecastResultId, tribeResultId?, tribeDescriptors?, hookOnly?}`. Returns an artifact or an explicit unavailable document. |
 | `GET /api/insight/v1/results/{id}` | One published artifact. |
 | `GET /api/insight/v1/rejections/{id}` | One persisted rejection record, including the offending sentence. |
@@ -217,3 +218,29 @@ A measured delta is a change in a measured signal between two analysed clips.
 It is not an audience outcome, not a result, and not evidence that the
 hypothesis was correct — no clip in this system has ever been shown to an
 audience.
+
+## The hook readout
+
+Before any model is involved, `POST /api/insight/v1/hook-readout` returns two
+things computed entirely from measurements:
+
+- a **timeline** of every timed item in the hook window — sound peaks, spoken
+  segments, on-screen text, keyframes, decoded visual windows, cortical
+  intervals — each carrying the citation it came from, so a marker can be
+  checked and can seek the player;
+- a **checklist** comparing single measurements against thresholds this project
+  declared. Each check reports `clear`, `flagged`, or `unmeasured`, and every
+  threshold is labelled `declared-convention`.
+
+Three properties matter more than the checks themselves:
+
+1. **No threshold here is calibrated.** They are round numbers chosen for
+   consistency. None has been evaluated against any audience outcome, a flag is
+   not a defect, and a clear check is not a prediction that anything will work.
+2. **`unmeasured` is never `clear`.** A branch that published nothing produces an
+   explicit unmeasured check, so an absent transcript can never read as "speech
+   starts on time".
+3. **It needs no model.** A test asserts the readout module imports no provider,
+   prompt, or judge, and the route's test builds a service whose provider factory
+   raises if it is ever called. The insight lane's job is narrowed to explaining
+   and proposing; being useful is not conditional on a model being installed.

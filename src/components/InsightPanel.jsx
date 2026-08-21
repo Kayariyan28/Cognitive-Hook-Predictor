@@ -3,6 +3,7 @@ import { CaretDown, Flask, Quotes, ShieldWarning, Sparkle } from "@phosphor-icon
 
 import {
   createExperiment,
+  fetchHookReadout,
   fetchInsightEvidence,
   fetchInsightStatus,
   generateInsight,
@@ -14,6 +15,9 @@ import {
   TRIBE_STANDING_CAPTION,
   buildAbCompareLink,
   experimentsByEffort,
+  layoutHookTimeline,
+  presentChecklist,
+  timelineLanes,
   phaseCommentaryInClipOrder,
   presentCitation,
   presentExperiment,
@@ -94,6 +98,72 @@ function Hypotheses({ items, bundle, onSeek }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function HookReadout({ readout, onSeek }) {
+  if (!readout) return null;
+  const lanes = timelineLanes(readout);
+  const checks = presentChecklist(readout);
+  const [start, end] = readout.windowSeconds ?? [0, 3];
+  return (
+    <section className="insight-section insight-readout">
+      <h4>
+        The first {end - start} seconds, measured ({start}–{end}s)
+      </h4>
+
+      {lanes.length > 0 && (
+        <div className="hook-timeline" role="group" aria-label="Hook window timeline">
+          {lanes.map((lane) => (
+            <div className="hook-timeline-row" key={lane.kind}>
+              <span className="hook-timeline-label">{lane.label}</span>
+              <div className="hook-timeline-track">
+                {lane.markers.map((marker, index) => (
+                  <button
+                    className={`hook-marker hook-marker--${marker.kind}`}
+                    key={`${marker.citation}-${index}`}
+                    type="button"
+                    style={{
+                      left: `${marker.leftPercent}%`,
+                      width: `${Math.max(marker.widthPercent, 1.2)}%`,
+                    }}
+                    title={`${marker.startSec}s · ${marker.label}`}
+                    onClick={() => onSeek?.(marker.startSec)}
+                  >
+                    <span className="visually-hidden">
+                      {marker.typeLabel} at {marker.startSec} seconds: {marker.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div className="hook-timeline-axis">
+            <span>{start}s</span>
+            <span>{end}s</span>
+          </div>
+        </div>
+      )}
+
+      <ul className="hook-checklist">
+        {checks.map((check) => (
+          <li className={`hook-check hook-check--${check.status}`} key={check.id}>
+            <span className="hook-check-status">{check.statusLabel}</span>
+            <div>
+              <strong>{check.label}</strong>
+              <p>{check.detail}</p>
+              {check.isConvention && (
+                <small>
+                  Threshold {check.threshold} is a convention this project declared, not a
+                  calibrated boundary.
+                </small>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="insight-limits">{readout.limits}</p>
+    </section>
   );
 }
 
@@ -203,6 +273,7 @@ export function InsightPanel({
   const [generation, setGeneration] = useState(IDLE);
   const [bundle, setBundle] = useState(null);
   const [provenanceOpen, setProvenanceOpen] = useState(false);
+  const [readout, setReadout] = useState(null);
   const [experiments, setExperiments] = useState([]);
   const [tracking, setTracking] = useState(null);
   const [trackError, setTrackError] = useState("");
@@ -226,6 +297,23 @@ export function InsightPanel({
   }, [baseUrl]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // The readout is measured, not generated: it loads as soon as a result
+  // exists, whether or not any insight model is installed.
+  useEffect(() => {
+    if (!forecastResultId) {
+      setReadout(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    fetchHookReadout(
+      { forecastResultId, tribeResultId, tribeDescriptors },
+      { signal: controller.signal, baseUrl },
+    )
+      .then((outcome) => setReadout(outcome.status === "available" ? outcome.readout : null))
+      .catch(() => setReadout(null));
+    return () => controller.abort();
+  }, [baseUrl, forecastResultId, tribeDescriptors, tribeResultId]);
 
   const run = useCallback(
     async (hookOnly) => {
@@ -365,6 +453,8 @@ export function InsightPanel({
           Run an evidence job first. There is nothing measured to describe yet.
         </p>
       )}
+
+      <HookReadout readout={readout} onSeek={onSeek} />
 
       {generation.status === "running" && <p className="insight-state">{generation.message}</p>}
 

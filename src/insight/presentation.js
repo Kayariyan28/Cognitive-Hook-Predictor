@@ -225,3 +225,75 @@ export function presentExperiment(record) {
 }
 
 export { MATCH_LABELS };
+
+export const MARKER_LABELS = Object.freeze({
+  "audio-peak": "Sound peak",
+  "spoken-segment": "Speech",
+  "on-screen-text": "On-screen text",
+  keyframe: "Keyframe",
+  "visual-window": "Visual window",
+  "cortical-interval": "Cortical interval",
+});
+
+export const CHECK_STATUS_LABELS = Object.freeze({
+  clear: "Clear",
+  flagged: "Worth a look",
+  unmeasured: "Not measured",
+});
+
+/**
+ * Lay markers out as percentages of the hook window so a timeline can be drawn
+ * with no measurement of its own. A marker outside the window is dropped rather
+ * than clamped, because a clamped marker would sit at a time it never occurred.
+ */
+export function layoutHookTimeline(readout) {
+  const bounds = Array.isArray(readout?.windowSeconds) ? readout.windowSeconds : [0, 3];
+  const [start, end] = [Number(bounds[0]), Number(bounds[1])];
+  const span = end - start;
+  if (!Number.isFinite(span) || span <= 0) return Object.freeze([]);
+  const markers = Array.isArray(readout?.timeline) ? readout.timeline : [];
+  return Object.freeze(
+    markers
+      .filter((marker) => Number.isFinite(marker?.startSec) && marker.startSec < end)
+      .map((marker) => {
+        const from = Math.max(start, marker.startSec);
+        const to = Number.isFinite(marker.endSec) ? Math.min(end, marker.endSec) : from;
+        return Object.freeze({
+          ...marker,
+          typeLabel: MARKER_LABELS[marker.kind] ?? marker.kind,
+          leftPercent: ((from - start) / span) * 100,
+          widthPercent: Math.max(0, ((to - from) / span) * 100),
+        });
+      }),
+  );
+}
+
+/** Group timeline markers into one lane per evidence kind, in a stable order. */
+export function timelineLanes(readout) {
+  const laid = layoutHookTimeline(readout);
+  const order = Object.keys(MARKER_LABELS);
+  return Object.freeze(
+    order
+      .map((kind) => Object.freeze({
+        kind,
+        label: MARKER_LABELS[kind],
+        markers: Object.freeze(laid.filter((marker) => marker.kind === kind)),
+      }))
+      .filter((lane) => lane.markers.length > 0),
+  );
+}
+
+/** Flagged checks first: they are the ones a creator can act on. */
+export function presentChecklist(readout) {
+  const checks = Array.isArray(readout?.checklist) ? readout.checklist : [];
+  const rank = { flagged: 0, clear: 1, unmeasured: 2 };
+  return Object.freeze(
+    [...checks]
+      .sort((left, right) => (rank[left.status] ?? 3) - (rank[right.status] ?? 3))
+      .map((check) => Object.freeze({
+        ...check,
+        statusLabel: CHECK_STATUS_LABELS[check.status] ?? check.status,
+        isConvention: check.thresholdKind === "declared-convention",
+      })),
+  );
+}
