@@ -1,0 +1,87 @@
+{
+  "hookReport": {
+    "windowSeconds": [
+      0.0,
+      3.0
+    ],
+    "whatTheHookContains": [
+      {
+        "text": "The opening frame shows a kitchen counter with a person holding a jar.",
+        "citations": [
+          "nanollava:/keyframes/0/parsed"
+        ]
+      },
+      {
+        "text": "On-screen wording in the first keyframe reads READ THIS.",
+        "citations": [
+          "nanollava:/keyframes/0/parsed/visibleText"
+        ]
+      }
+    ],
+    "observations": [
+      {
+        "text": "The first measured short-window energy peak starts at 1.44 seconds.",
+        "citations": [
+          "measured:/audio/energyPeaks/0"
+        ]
+      },
+      {
+        "text": "Measured audio root-mean-square across the clip is 0.1372.",
+        "citations": [
+          "measured:/audio/descriptors/rms"
+        ]
+      },
+      {
+        "text": "The opening AudioSet window carries Speech above Music.",
+        "citations": [
+          "ast:/windows/0"
+        ]
+      }
+    ],
+    "hypotheses": [
+      {
+        "id": "h1",
+        "text": "Bringing the jar action before the first measured energy peak may change the opening's measured audio structure.",
+        "label": "untested heuristic",
+        "citations": [
+          "measured:/audio/energyPeaks/0",
+          "nanollava:/keyframes/0/parsed"
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "id": "x1",
+        "hypothesisId": "h1",
+        "edit": "Re-cut so the jar action lands before the measured peak at 1.44 seconds.",
+        "effort": "low",
+        "expectedSignalShift": [
+          {
+            "metricPath": "measured:/audio/descriptors/silent_window_fraction",
+            "direction": "decrease"
+          }
+        ],
+        "citations": [
+          "measured:/audio/energyPeaks/0"
+        ]
+      }
+    ]
+  },
+  "phaseCommentary": [
+    {
+      "phase": "early",
+      "text": "The early phase carries the lowest predicted cortical magnitude of the clip's three phases.",
+      "citations": [
+        "tribe:/phases/0"
+      ]
+    }
+  ],
+  "tribeNotes": [
+    {
+      "text": "These values are predicted average-subject cortical BOLD, not audience behavior.",
+      "citations": [
+        "tribe:/parcels/0"
+      ]
+    }
+  ]
+}
