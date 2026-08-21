@@ -1,4 +1,4 @@
-"""The `hook-doctor.v1` system prompt.
+"""The Hook Doctor system prompt. `PROMPT_TEMPLATE_ID` is its version.
 
 The template is static so its hash is stable: per-request data travels in the
 user message, never in the system prompt.  Term lists are rendered from
@@ -20,7 +20,7 @@ from ..claim_terms import (
 )
 
 
-PROMPT_TEMPLATE_ID = "hook-doctor.v1"
+PROMPT_TEMPLATE_ID = "hook-doctor.v2"
 
 # A distilled restatement of docs/SCIENTIFIC_LIMITS.md. It is deliberately
 # short: the deterministic validator, not this paragraph, is what enforces it.
@@ -87,6 +87,16 @@ followed by `@window(start,end)`. The pointer is resolved inside that lane. Exam
 
 A citation that does not resolve in the bundle you were given voids the whole response.
 `metricPath` must be a citation without a window that points at a number.
+
+## Comparative context
+
+The `measured` lane may carry a `comparative` block: where this clip's measurements sit among
+the creator's own recent clips, with `rank`, `outOf`, and `percentile` already computed. You
+may restate those numbers and cite them, for example
+`measured:/comparative/metrics/0/rank`. You may not compute a comparison yourself, and you
+may not describe a rank as better, worse, stronger, or weaker — a rank says where a
+measurement sits among that creator's other measurements, and nothing else. When the block is
+absent, there is no comparison to make.
 
 ## Numbers
 

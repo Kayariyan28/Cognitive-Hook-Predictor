@@ -15,7 +15,7 @@ import re
 from typing import Any, Iterable, Mapping, Sequence
 
 
-BUNDLE_SCHEMA_VERSION = "insight-evidence-bundle/1"
+BUNDLE_SCHEMA_VERSION = "insight-evidence-bundle/2"
 LANE_KEYS = (
     "measured",
     "nanollava",
@@ -185,7 +185,9 @@ def _parsed_array(text: Any) -> list[Any] | None:
 # --------------------------------------------------------------------------
 
 
-def _measured_lane(result: Mapping[str, Any]) -> dict[str, Any]:
+def _measured_lane(
+    result: Mapping[str, Any], comparative: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     evidence = _mapping(result.get("evidence"))
     metadata = _mapping(evidence.get("videoMetadata")) if evidence else None
     if metadata is None or metadata.get("status") != "available":
@@ -227,7 +229,19 @@ def _measured_lane(result: Mapping[str, Any]) -> dict[str, Any]:
             "descriptors": _descriptors(output, _MEASURED_AUDIO_PREFIX),
             "energyPeaks": peaks,
         }
-    return {"status": "present", "video": video, "audio": audio}
+    return {
+        "status": "present",
+        "video": video,
+        "audio": audio,
+        # Computed by code from the creator's own past measurements, never
+        # asserted by a model. Absent until enough clips exist to rank against.
+        "comparative": dict(comparative)
+        if isinstance(comparative, Mapping)
+        else {
+            "status": "absent",
+            "reason": "no comparative context was computed for this bundle",
+        },
+    }
 
 
 def _nanollava_lane(result: Mapping[str, Any]) -> dict[str, Any]:
@@ -498,6 +512,7 @@ def assemble_evidence_bundle(
     *,
     tribe_descriptors: Mapping[str, Any] | None = None,
     declared_context: Mapping[str, Any] | None = None,
+    comparative: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble one citable bundle from completed, already-validated results."""
 
@@ -529,7 +544,7 @@ def assemble_evidence_bundle(
             "window": None,
         },
         "lanes": {
-            "measured": _measured_lane(forecast_result),
+            "measured": _measured_lane(forecast_result, comparative),
             "nanollava": _nanollava_lane(forecast_result),
             "ast": _ast_lane(forecast_result),
             "vjepa": _vjepa_lane(forecast_result),
@@ -626,7 +641,12 @@ def _slice_lane(
                 "energyPeaks": peaks,
                 "onset": _audio_onset(peaks, window),
             }
-        return {"status": "present", "video": dict(_mapping(lane.get("video")) or {}), "audio": audio}
+        return {
+            "status": "present",
+            "video": dict(_mapping(lane.get("video")) or {}),
+            "audio": audio,
+            "comparative": dict(_mapping(lane.get("comparative")) or {}),
+        }
 
     if key == "nanollava":
         keyframes = _sliced(_sequence(lane.get("keyframes")), window)

@@ -121,7 +121,7 @@ class StatusTests(ServiceHarness):
         self.assertEqual(status["state"], "ready")
         self.assertTrue(status["generationAvailable"])
         self.assertEqual(status["provider"]["model"]["revision"], PINNED_REVISION)
-        self.assertEqual(status["promptTemplate"]["id"], "hook-doctor.v1")
+        self.assertEqual(status["promptTemplate"]["id"], "hook-doctor.v2")
         self.assertEqual(len(status["promptTemplate"]["hash"]), 64)
         self.assertFalse(status["behavioralOutcome"])
 
@@ -287,7 +287,7 @@ class RejectionRecordTests(ServiceHarness):
         self.assertEqual(record["reasonCode"], "claim_boundary_violation")
         self.assertEqual(record["detail"]["term"], "go viral")
         self.assertIn("go viral", record["detail"]["sentence"])
-        self.assertEqual(record["promptTemplateId"], "hook-doctor.v1")
+        self.assertEqual(record["promptTemplateId"], "hook-doctor.v2")
 
     def test_a_rejection_is_never_cached_as_a_success(self):
         raw = (FIXTURES / "global_virality_claim.json").read_text(encoding="utf-8")

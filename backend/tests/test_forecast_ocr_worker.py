@@ -15,13 +15,21 @@ from backend.forecast.workers.ocr_screen_text import (
     macos_product_version,
     screen_text_document,
 )
-from backend.forecast.workers.nanollava import KEYFRAME_COUNT, NanoLlavaUnavailable
+from backend.forecast.workers.nanollava import (
+    HOOK_FRAME_TIMES,
+    KEYFRAME_COUNT,
+    NanoLlavaUnavailable,
+)
 from backend.insight.bundle import assemble_evidence_bundle, hook_evidence_card
 from backend.insight.citations import parse_citation, resolve_citation
 from backend.tests.insight_support import forecast_result
 
 
 DURATION_SECONDS = 21.5
+# The frame at exactly 3.0 s marks the hook boundary. Its window is [3.0, 3.4],
+# which touches the 0-3 s hook window without straddling it, so the hook card
+# keeps every hook frame except that one.
+HOOK_FRAMES_INSIDE = len([moment for moment in HOOK_FRAME_TIMES if moment < 3.0])
 
 
 class FakeExtractor:
@@ -32,16 +40,30 @@ class FakeExtractor:
         self.error = error
         self.calls = 0
 
-    def extract(self, video_path: Path, duration_seconds: float, destination: Path):
+    def extract(
+        self,
+        video_path: Path,
+        duration_seconds: float,
+        destination: Path,
+        sample_times: tuple[float, ...] | None = None,
+    ):
         self.calls += 1
         if self.error is not None:
             raise self.error
         destination.mkdir(parents=True, exist_ok=True)
+        planned = (
+            sample_times
+            if sample_times is not None
+            else tuple(
+                round(duration_seconds * (index + 0.5) / self.count, 6)
+                for index in range(self.count)
+            )
+        )
         frames = []
-        for index in range(self.count):
+        for index, moment in enumerate(planned):
             path = destination / f"frame-{index:02d}.png"
             path.write_bytes(b"png")
-            frames.append((round(duration_seconds * (index + 0.5) / self.count, 6), path))
+            frames.append((moment, path))
         return tuple(frames)
 
 
@@ -62,6 +84,9 @@ class FakeRecognizer:
             return [{"text": "READ THIS", "confidence": 0.9375, "bbox": [0.1, 0.1, 0.5, 0.2]}]
         if self.calls == 2:
             return [{"text": "STEP ONE", "confidence": 0.8125, "bbox": [0.1, 0.7, 0.4, 0.8]}]
+        if self.calls == KEYFRAME_COUNT + 1:
+            # The first hook frame, at t=0.
+            return [{"text": "STOP SCROLLING", "confidence": 0.875, "bbox": [0.1, 0.2, 0.8, 0.3]}]
         return []
 
 
@@ -97,7 +122,7 @@ class OutputSchemaTests(OcrHarness):
         self.assertEqual(value["branch"], "ocr")
         self.assertEqual(value["evidenceKind"], "measured-on-screen-text")
         self.assertIs(value["behavioralOutcome"], False)
-        self.assertEqual(len(value["observations"]), KEYFRAME_COUNT)
+        self.assertEqual(len(value["observations"]), KEYFRAME_COUNT + len(HOOK_FRAME_TIMES))
         self.assertEqual(
             sorted(value["provenance"]),
             ["adapterId", "engine", "macOSVersion", "preprocessingId", "usesLearnedModel"],
@@ -108,22 +133,45 @@ class OutputSchemaTests(OcrHarness):
     def test_declared_output_schema_is_frames_and_blocks_only(self):
         document = screen_text_document(self.run_adapter(self.adapter()))
         self.assertEqual(sorted(document), ["frames"])
-        self.assertEqual(len(document["frames"]), KEYFRAME_COUNT)
+        self.assertEqual(len(document["frames"]), KEYFRAME_COUNT + len(HOOK_FRAME_TIMES))
         self.assertEqual(sorted(document["frames"][0]), ["blocks", "frameIndex"])
         self.assertEqual(sorted(document["frames"][0]["blocks"][0]), ["bbox", "confidence", "text"])
         self.assertEqual(document["frames"][0]["blocks"][0]["text"], "READ THIS")
 
-    def test_the_existing_six_keyframe_contract_is_reused(self):
+    def test_both_passes_run_and_declare_themselves(self):
         extractor = FakeExtractor()
         self.run_adapter(self.adapter(extractor=extractor))
-        self.assertEqual(extractor.calls, 1)
-        self.assertEqual(PREPROCESSING_ID, "ffmpeg-keyframes-6x384-png-center-sampled/1")
+        self.assertEqual(extractor.calls, 2)
+        self.assertIn("ffmpeg-keyframes-6x384-png-center-sampled/1", PREPROCESSING_ID)
+        self.assertIn("ffmpeg-hookframes-6x384-png-absolute/1", PREPROCESSING_ID)
 
     def test_counts_are_measured_not_asserted(self):
         features = self.run_adapter(self.adapter()).features
-        self.assertEqual(features["ocr.frames_read"], float(KEYFRAME_COUNT))
-        self.assertEqual(features["ocr.frames_with_text"], 2.0)
-        self.assertEqual(features["ocr.block_count"], 2.0)
+        self.assertEqual(
+            features["ocr.frames_read"], float(KEYFRAME_COUNT + len(HOOK_FRAME_TIMES))
+        )
+        self.assertEqual(features["ocr.frames_with_text"], 3.0)
+        self.assertEqual(features["ocr.block_count"], 3.0)
+        self.assertEqual(features["ocr.hook_frames_read"], float(len(HOOK_FRAME_TIMES)))
+        self.assertEqual(features["ocr.hook_frames_with_text"], 1.0)
+        self.assertEqual(features["ocr.hook_block_count"], 1.0)
+
+    def test_the_hook_window_is_covered_on_a_long_clip(self):
+        """The gap this pass exists to close: no proportional frame is inside 0-3s."""
+
+        output = self.adapter().run(
+            video_path=self.video,
+            input_sha256=self.input_sha256,
+            duration_seconds=45.0,
+            context={},
+        )
+        inside = [
+            item for item in output.observations if item["startTime"] < 3.0
+        ]
+        self.assertEqual(len(inside), HOOK_FRAMES_INSIDE)
+        self.assertEqual(inside[0]["startTime"], 0.0)
+        for item in inside:
+            self.assertIn("pass:hook", item["labels"])
 
 
 class EngineProvenanceTests(OcrHarness):
@@ -178,7 +226,7 @@ class SchemaValidationTests(OcrHarness):
 
     def test_a_frame_with_no_text_is_recorded_as_empty_not_missing(self):
         output = self.run_adapter(self.adapter(FakeRecognizer(blocks=[])))
-        self.assertEqual(len(output.observations), KEYFRAME_COUNT)
+        self.assertEqual(len(output.observations), KEYFRAME_COUNT + len(HOOK_FRAME_TIMES))
         self.assertEqual(json.loads(output.observations[0]["text"]), [])
         self.assertEqual(output.features["ocr.frames_with_text"], 0.0)
 
@@ -272,7 +320,11 @@ class AssemblerIntegrationTests(OcrHarness):
         )
         lane = card["lanes"]["ocr"]
         self.assertEqual(lane["status"], "present")
-        self.assertEqual([frame["frameIndex"] for frame in lane["frames"]], [0])
+        # Only the hook pass reaches the window on this clip length.
+        self.assertEqual(
+            [frame["frameIndex"] for frame in lane["frames"]],
+            [0, *range(KEYFRAME_COUNT, KEYFRAME_COUNT + HOOK_FRAMES_INSIDE)],
+        )
         self.assertEqual(
             resolve_citation(card, parse_citation("ocr:/frames/0/blocks/0/text")),
             "READ THIS",

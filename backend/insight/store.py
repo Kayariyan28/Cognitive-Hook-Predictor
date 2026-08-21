@@ -27,6 +27,7 @@ class InsightStore:
         self.rejections_dir = self.root / "rejections"
         self.cache_dir = self.root / "cache"
         self.experiments_dir = self.root / "experiments"
+        self.outcomes_dir = self.root / "outcomes"
 
     def initialize(self) -> None:
         for directory in (
@@ -34,6 +35,7 @@ class InsightStore:
             self.rejections_dir,
             self.cache_dir,
             self.experiments_dir,
+            self.outcomes_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -189,6 +191,47 @@ class InsightStore:
                 records.append(payload)
         records.sort(key=lambda item: str(item.get("createdAt", "")), reverse=True)
         return records[:limit]
+
+    # -- outcomes ----------------------------------------------------------
+    #
+    # Creator-declared labels for a future calibration head. Nothing in the
+    # insight path reads this directory; see backend/insight/outcomes.py.
+
+    def publish_outcome_set(self, outcome_set_id: str, payload: Mapping[str, Any]) -> str:
+        return self._publish_directory(
+            self.outcomes_dir, outcome_set_id, {"outcomes.json": payload}
+        )
+
+    def read_outcome_set(self, outcome_set_id: str) -> dict[str, Any] | None:
+        payload = self._read_json(self.outcomes_dir / outcome_set_id / "outcomes.json")
+        if payload is None:
+            return None
+        if payload.get("outcomeSetId") != outcome_set_id:
+            raise InsightStoreError("stored outcome set has an invalid identity")
+        return payload
+
+    def list_outcome_sets(self) -> list[dict[str, Any]]:
+        if not self.outcomes_dir.is_dir():
+            return []
+        documents: list[dict[str, Any]] = []
+        for directory in sorted(self.outcomes_dir.iterdir()):
+            if not directory.is_dir() or directory.name.startswith("."):
+                continue
+            payload = self._read_json(directory / "outcomes.json")
+            if payload is not None:
+                documents.append(payload)
+        documents.sort(key=lambda item: str(item.get("importedAt", "")), reverse=True)
+        return documents
+
+    def delete_outcome_set(self, outcome_set_id: str) -> bool:
+        """Deletion is real and immediate; this is the operator's erase button."""
+
+        directory = self.outcomes_dir / outcome_set_id
+        if not directory.is_dir():
+            return False
+        shutil.rmtree(directory)
+        self._fsync_directory(self.outcomes_dir)
+        return True
 
     # -- cache -------------------------------------------------------------
 

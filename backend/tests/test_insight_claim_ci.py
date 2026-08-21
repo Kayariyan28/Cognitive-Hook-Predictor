@@ -37,6 +37,15 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / "insight_fixtures"
 EXPORTED_TERMS = REPOSITORY_ROOT / "src" / "insight" / "claim-terms.json"
 
+# Owned by test_insight_phase10.py, which asserts each one there.
+PHASE_TEN_FIXTURES = frozenset(
+    {
+        "outcomes_lane_citation.json",
+        "comparative_rank_valid_twin.json",
+        "comparative_verdict_claim.json",
+    }
+)
+
 NEW_LANE_EXPECTATIONS = {
     "ocr_reader_outcome_claim.json": ("claim_boundary_violation", "hooked"),
     "asr_retention_claim.json": ("claim_boundary_violation", "retention"),
@@ -66,6 +75,7 @@ class FixtureCoverageTests(unittest.TestCase):
             | set(CLAIM_EXPECTATIONS)
             | set(CLAIM_VALID_TWINS)
             | set(NEW_LANE_EXPECTATIONS)
+            | PHASE_TEN_FIXTURES
         )
         on_disk = {path.name for path in FIXTURES.glob("*.json")}
         self.assertEqual(

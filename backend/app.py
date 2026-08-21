@@ -44,6 +44,7 @@ from .forecast.orchestrator import MultimodalEvidenceOrchestrator
 from .forecast.registry import ForecastRegistry
 from .insight.bundle import BundleUnavailableError
 from .insight.config import InsightSettings
+from .insight.outcomes import OutcomeLedger
 from .insight.router import create_insight_router
 from .insight.service import InsightService
 from .model_runtime import TribeRuntime
@@ -92,8 +93,40 @@ def load_completed_forecast_result(result_id: str) -> dict[str, Any] | None:
         ) from exc
 
 
+def load_recent_forecast_results(limit: int) -> list[dict[str, Any]]:
+    """Read recent published results for comparative context, newest first."""
+
+    try:
+        identifiers = forecast_jobs.store.list_result_ids()
+    except JobStoreError:
+        return []
+    results: list[dict[str, Any]] = []
+    for identifier in identifiers:
+        try:
+            result = forecast_jobs.store.read_result(identifier)
+        except JobStoreError:
+            continue
+        if result is not None:
+            results.append(result)
+    results.sort(key=lambda item: str(item.get("createdAt", "")), reverse=True)
+    return results[: max(1, int(limit))]
+
+
+def published_forecast_result_exists(result_id: str) -> bool:
+    try:
+        return forecast_jobs.store.read_result(result_id) is not None
+    except JobStoreError:
+        return False
+
+
 insight_service = InsightService(
-    insight_settings, forecast_result_loader=load_completed_forecast_result
+    insight_settings,
+    forecast_result_loader=load_completed_forecast_result,
+    forecast_corpus_loader=load_recent_forecast_results,
+)
+# Outcome labels live in their own store. Nothing in the insight path reads it.
+insight_outcomes = OutcomeLedger(
+    insight_service.store, result_exists=published_forecast_result_exists
 )
 
 
@@ -250,7 +283,9 @@ app.include_router(
         job_service=forecast_jobs,
     )
 )
-app.include_router(create_insight_router(service=insight_service))
+app.include_router(
+    create_insight_router(service=insight_service, outcome_ledger=insight_outcomes)
+)
 
 
 @app.get("/api/tribe/v1/health")

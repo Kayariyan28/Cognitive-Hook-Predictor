@@ -42,6 +42,13 @@ GLOBAL_OUTCOME_TERMS: tuple[str, ...] = (
     "sells",
     "will perform",
     "outperform",
+    # Found by the comparative red-team fixture: a rank restated as a verdict.
+    "performance",
+    "performing",
+    "performs",
+    "best-performing",
+    "top-performing",
+    "worst-performing",
     "guarantee",
     "guaranteed",
     "boost",

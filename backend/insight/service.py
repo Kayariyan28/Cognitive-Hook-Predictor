@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from .bundle import (
@@ -19,8 +19,9 @@ from .bundle import (
     assemble_evidence_bundle,
     hook_evidence_card,
 )
+from .comparative import build_comparative, corpus_from_results, extract_metric_values
 from .config import InsightSettings
-from .prompts.hook_doctor_v1 import PROMPT_TEMPLATE_ID, prompt_hash
+from .prompts.hook_doctor import PROMPT_TEMPLATE_ID, prompt_hash
 from .provenance import LIMITS_STATEMENT, build_provenance, cache_key
 from .providers import (
     ProviderExecutionError,
@@ -67,11 +68,13 @@ class InsightService:
         forecast_result_loader: Callable[[str], Mapping[str, Any] | None],
         store: InsightStore | None = None,
         provider_factory: Callable[[InsightSettings], Any] | None = None,
+        forecast_corpus_loader: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
     ) -> None:
         self.settings = settings
         self.store = store or InsightStore(settings.insight_dir)
         self._load_forecast_result = forecast_result_loader
         self._provider_factory = provider_factory or build_provider
+        self._load_forecast_corpus = forecast_corpus_loader
 
     @property
     def forecast_result_loader(self) -> Callable[[str], Mapping[str, Any] | None]:
@@ -227,8 +230,38 @@ class InsightService:
                 raise BundleUnavailableError(
                     "the supplied TRIBE descriptors do not belong to the requested tribeResultId"
                 )
-        bundle = assemble_evidence_bundle(result, tribe_descriptors=descriptors)
+        bundle = assemble_evidence_bundle(
+            result,
+            tribe_descriptors=descriptors,
+            comparative=self._comparative(result),
+        )
         return hook_evidence_card(bundle) if request.hook_only else bundle
+
+    def _comparative(self, result: Mapping[str, Any]) -> dict[str, Any] | None:
+        """Rank this clip among the operator's own recent clips, or say nothing."""
+
+        if self._load_forecast_corpus is None:
+            return None
+        result_id = result.get("resultId")
+        try:
+            recent = self._load_forecast_corpus(self.settings.comparative_window + 1)
+            corpus = corpus_from_results(
+                recent,
+                exclude_result_id=result_id if isinstance(result_id, str) else "",
+                assemble=assemble_evidence_bundle,
+            )
+            subject = extract_metric_values(assemble_evidence_bundle(result))
+            return build_comparative(
+                subject,
+                corpus,
+                minimum_clips=self.settings.comparative_minimum_clips,
+                window=self.settings.comparative_window,
+            )
+        except Exception:
+            # Comparative context is optional. A failure here never blocks the
+            # report; the lane simply reports that it was not computed.
+            LOGGER.exception("Comparative context could not be computed")
+            return None
 
     def _artifact(
         self,

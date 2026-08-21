@@ -24,7 +24,7 @@ import {
 
 function bundleFixture({ tribe = "present" } = {}) {
   return {
-    schemaVersion: "insight-evidence-bundle/1",
+    schemaVersion: "insight-evidence-bundle/2",
     source: { forecastResultId: "a".repeat(32), tribeResultId: null, window: [0, 3] },
     inputEvidenceHash: "c".repeat(64),
     lanes: {

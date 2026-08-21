@@ -12,7 +12,7 @@ from typing import Any, Mapping
 
 from .bundle import canonical_json
 from .config import InsightSettings
-from .prompts.hook_doctor_v1 import PROMPT_TEMPLATE_ID, prompt_hash
+from .prompts.hook_doctor import PROMPT_TEMPLATE_ID, prompt_hash
 from .providers.base import GenerationResult
 
 

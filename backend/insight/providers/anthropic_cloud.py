@@ -13,7 +13,7 @@ import time
 from typing import Any, Callable, Mapping
 
 from ..config import InsightSettings
-from ..prompts.hook_doctor_v1 import build_user_message, system_prompt
+from ..prompts.hook_doctor import build_user_message, system_prompt
 from .base import (
     Availability,
     GenerationResult,

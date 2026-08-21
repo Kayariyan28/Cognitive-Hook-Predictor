@@ -8,7 +8,7 @@
  */
 
 export const INSIGHT_SCHEMA_VERSION = "insight/1";
-export const INSIGHT_BUNDLE_SCHEMA_VERSION = "insight-evidence-bundle/1";
+export const INSIGHT_BUNDLE_SCHEMA_VERSION = "insight-evidence-bundle/2";
 export const HYPOTHESIS_LABEL = "untested heuristic";
 
 export const INSIGHT_LANES = Object.freeze([

@@ -62,6 +62,44 @@ FFMPEG_ENV = "FORECAST_NANOLLAVA_FFMPEG_BINARY"
 PYTHON_ENV = "FORECAST_NANOLLAVA_PYTHON"
 SUBPROCESS_TIMEOUT_ENV = "FORECAST_NANOLLAVA_TIMEOUT_SECONDS"
 KEYFRAME_COUNT = 6
+# The six keyframes are sampled proportionally, so the first one always lands at
+# duration/12 and the hook window's share of them shrinks as a clip gets longer:
+# past ~36 seconds no proportional frame falls inside the first three seconds at
+# all. Hook frames are therefore sampled at fixed absolute times, under their own
+# preprocessing identity so the pinned six-frame contract is untouched.
+# Six times, matching KEYFRAME_COUNT, so the isolated runtime contract that
+# requires exactly six frames holds for the hook pass unchanged.
+HOOK_FRAME_TIMES: tuple[float, ...] = (0.0, 0.4, 1.0, 1.8, 2.4, 3.0)
+HOOK_PREPROCESSING_ID = "ffmpeg-hookframes-6x384-png-absolute/1"
+HOOK_PASS_ENV = "FORECAST_NANOLLAVA_HOOK_PASS"
+HOOK_FRAME_SPAN_SECONDS = 0.4
+
+
+def _two_pass_preprocessing() -> tuple[str, str]:
+    """Declare the combined contract when both passes run.
+
+    The clip digest above is an audited constant and is never altered. When the
+    hook pass is enabled the branch runs a second, differently pinned
+    preprocessing contract, so provenance must describe both rather than claim
+    only the first. The combined digest is derived — reproducibly — from the two
+    contracts it covers.
+    """
+
+    combined_id = f"{PREPROCESSING_ID}+{HOOK_PREPROCESSING_ID}"
+    payload = json.dumps(
+        {
+            "passes": [
+                {"id": PREPROCESSING_ID, "sha256": PREPROCESSING_SHA256},
+                {"id": HOOK_PREPROCESSING_ID, "times": list(HOOK_FRAME_TIMES)},
+            ]
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return combined_id, hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+TWO_PASS_PREPROCESSING_ID, TWO_PASS_PREPROCESSING_SHA256 = _two_pass_preprocessing()
 MAX_RESPONSE_CHARACTERS = 12_000
 MAX_BATCH_RESPONSE_BYTES = 512 * 1024
 MAX_TOKENS = 320
@@ -150,6 +188,31 @@ def _default_snapshot() -> Path:
     )
 
 
+def hook_frame_times(
+    duration_seconds: float, times: tuple[float, ...] = HOOK_FRAME_TIMES
+) -> tuple[float, ...]:
+    """Fixed absolute sample times inside the hook, clipped to the clip's length.
+
+    Unlike the proportional pass, these do not move with duration: the opening
+    frame of a 12-second clip and a 55-second clip are both sampled at t=0.
+    """
+
+    if (
+        not isinstance(duration_seconds, (int, float))
+        or isinstance(duration_seconds, bool)
+        or not math.isfinite(float(duration_seconds))
+        or duration_seconds <= 0
+    ):
+        raise ValueError("duration must be positive")
+    duration = float(duration_seconds)
+    selected: list[float] = []
+    for candidate in times:
+        moment = round(min(float(candidate), max(0.0, duration - 0.05)), 6)
+        if moment not in selected:
+            selected.append(moment)
+    return tuple(selected)
+
+
 def deterministic_sample_times(
     duration_seconds: float, count: int = KEYFRAME_COUNT
 ) -> tuple[float, ...]:
@@ -172,13 +235,22 @@ class FfmpegKeyframeExtractor:
     count: int = KEYFRAME_COUNT
 
     def extract(
-        self, video_path: Path, duration_seconds: float, destination: Path
+        self,
+        video_path: Path,
+        duration_seconds: float,
+        destination: Path,
+        sample_times: tuple[float, ...] | None = None,
     ) -> tuple[tuple[float, Path], ...]:
+        """Decode frames at the given times, or at the proportional defaults."""
+
         destination.mkdir(parents=True, exist_ok=True)
         frames: list[tuple[float, Path]] = []
-        for index, sample_time in enumerate(
-            deterministic_sample_times(duration_seconds, self.count)
-        ):
+        planned = (
+            sample_times
+            if sample_times is not None
+            else deterministic_sample_times(duration_seconds, self.count)
+        )
+        for index, sample_time in enumerate(planned):
             output = destination / f"frame-{index:02d}.png"
             command = [
                 self.binary,
@@ -604,10 +676,15 @@ class NanoLlavaSemanticAdapter:
         *,
         backend: SemanticBackend | BatchSemanticBackend | None = None,
         frame_extractor: FrameExtractor | None = None,
+        hook_pass: bool = True,
     ) -> None:
         self.snapshot = snapshot.resolve()
         self.backend = backend
         self.frame_extractor = frame_extractor or FfmpegKeyframeExtractor()
+        # A second described pass over the hook window. It doubles this lane's
+        # model time, so an operator can turn it off; it is on by default because
+        # without it the opening of a longer clip is never described at all.
+        self.hook_pass = hook_pass
 
     @classmethod
     def from_env(
@@ -617,6 +694,12 @@ class NanoLlavaSemanticAdapter:
         raw_snapshot = str(source.get(SNAPSHOT_ENV, "")).strip()
         snapshot = Path(raw_snapshot).expanduser() if raw_snapshot else _default_snapshot()
         binary = str(source.get(FFMPEG_ENV, "ffmpeg")).strip() or "ffmpeg"
+        hook_pass = str(source.get(HOOK_PASS_ENV, "true")).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
         raw_python = str(source.get(PYTHON_ENV, "")).strip()
         backend: SemanticBackend | BatchSemanticBackend | None = None
         if raw_python:
@@ -649,6 +732,7 @@ class NanoLlavaSemanticAdapter:
             snapshot,
             backend=backend,
             frame_extractor=FfmpegKeyframeExtractor(binary=binary),
+            hook_pass=hook_pass,
         )
 
     def availability(self) -> dict[str, Any]:
@@ -716,6 +800,27 @@ class NanoLlavaSemanticAdapter:
                 "The cached NanoLLaVA weights failed the pinned SHA-256 check."
             )
 
+    def _describe_pass(
+        self,
+        backend: Any,
+        frames: tuple[tuple[float, Path], ...],
+        prompt: str,
+    ) -> tuple[str, ...]:
+        describe_many = getattr(backend, "describe_many", None)
+        if callable(describe_many):
+            raw_responses = tuple(describe_many(tuple(item[1] for item in frames), prompt))
+            if len(raw_responses) != len(frames):
+                raise NanoLlavaOutputError(
+                    "The batch semantic backend returned the wrong response count."
+                )
+            return raw_responses
+        describe = getattr(backend, "describe", None)
+        if not callable(describe):
+            raise NanoLlavaUnavailable(
+                "The configured NanoLLaVA semantic backend is invalid."
+            )
+        return tuple(describe(image_path, prompt) for _, image_path in frames)
+
     def run(
         self,
         *,
@@ -756,11 +861,15 @@ class NanoLlavaSemanticAdapter:
             "uncertainties": 0,
         }
         prompt = FRAME_PROMPT.format(boundary=SYSTEM_BOUNDARY).strip()
+        frames: tuple[tuple[float, Path], ...] = ()
         with tempfile.TemporaryDirectory(prefix="forecast-nanollava-") as directory:
+            root = Path(directory)
+            # Each pass gets its own directory. The extractor also creates it,
+            # but a caller-supplied extractor need not.
+            (root / "clip").mkdir(parents=True, exist_ok=True)
+            (root / "hook").mkdir(parents=True, exist_ok=True)
             frames = tuple(
-                self.frame_extractor.extract(
-                    video_path, float(duration_seconds), Path(directory)
-                )
+                self.frame_extractor.extract(video_path, float(duration_seconds), root / "clip")
             )
             expected_times = deterministic_sample_times(float(duration_seconds))
             if (
@@ -775,67 +884,92 @@ class NanoLlavaSemanticAdapter:
                 raise NanoLlavaUnavailable(
                     "The keyframe extractor violated the deterministic frame contract."
                 )
-            sample_times = tuple(item[0] for item in frames)
-            describe_many = getattr(backend, "describe_many", None)
-            if callable(describe_many):
-                raw_responses = tuple(
-                    describe_many(tuple(item[1] for item in frames), prompt)
-                )
-                if len(raw_responses) != len(frames):
-                    raise NanoLlavaOutputError(
-                        "The batch semantic backend returned the wrong response count."
-                    )
-            else:
-                describe = getattr(backend, "describe", None)
-                if not callable(describe):
-                    raise NanoLlavaUnavailable(
-                        "The configured NanoLLaVA semantic backend is invalid."
-                    )
-                raw_responses = tuple(
-                    describe(image_path, prompt) for _, image_path in frames
-                )
-            for index, raw_response in enumerate(raw_responses):
+
+            # The clip pass samples proportionally, so on a clip longer than
+            # about 36 seconds none of its frames land inside the first three
+            # seconds. The hook pass samples fixed absolute times so the opening
+            # is described on every clip length.
+            hook_frames: tuple[tuple[float, Path], ...] = ()
+            if self.hook_pass:
                 try:
-                    parsed = _strict_json_object(raw_response)
-                except NanoLlavaOutputError:
-                    warnings.append(
-                        f"Keyframe {index + 1} was omitted because its model response failed the strict semantic JSON contract."
+                    hook_frames = tuple(
+                        self.frame_extractor.extract(
+                            video_path,
+                            float(duration_seconds),
+                            root / "hook",
+                            sample_times=hook_frame_times(float(duration_seconds)),
+                        )
                     )
-                    continue
-                start, end = _observation_bounds(
-                    sample_times, index, float(duration_seconds)
-                )
-                encoded_observation = json.dumps(
-                    parsed,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                if len(encoded_observation) > 4096:
+                except TypeError:
                     warnings.append(
-                        f"Keyframe {index + 1} was omitted because its validated semantic JSON exceeded the observation limit."
+                        "The configured keyframe extractor cannot sample the hook window, "
+                        "so opening keyframes were not described."
                     )
-                    continue
-                field_coverage["scene"] += 1
-                field_coverage["action"] += 1
-                field_coverage["shot"] += 1
-                if parsed["visibleText"] is not None:
-                    field_coverage["visible_text"] += 1
-                if parsed["uncertainties"] is not None:
-                    field_coverage["uncertainties"] += 1
-                observations.append(
-                    {
-                        "kind": "nanollava-keyframe-semantics",
-                        "startTime": start,
-                        "endTime": end,
-                        "text": encoded_observation,
-                        "labels": [
-                            "model-derived",
-                            "single-keyframe",
-                            "nanollava-fallback",
-                        ],
-                    }
+                except NanoLlavaUnavailable:
+                    warnings.append(
+                        "The hook keyframe pass failed; only proportionally sampled "
+                        "keyframes were described."
+                    )
+
+            passes = (("clip", frames, tuple(item[0] for item in frames)),)
+            if hook_frames:
+                passes = passes + (
+                    ("hook", hook_frames, tuple(item[0] for item in hook_frames)),
                 )
+
+            for pass_name, pass_frames, pass_times in passes:
+                raw_responses = self._describe_pass(backend, pass_frames, prompt)
+                for index, raw_response in enumerate(raw_responses):
+                    try:
+                        parsed = _strict_json_object(raw_response)
+                    except NanoLlavaOutputError:
+                        warnings.append(
+                            f"The {pass_name} pass omitted keyframe {index + 1} because its "
+                            "model response failed the strict semantic JSON contract."
+                        )
+                        continue
+                    if pass_name == "hook":
+                        start = round(float(pass_times[index]), 6)
+                        end = round(
+                            min(float(duration_seconds), start + HOOK_FRAME_SPAN_SECONDS), 6
+                        )
+                        if end <= start:
+                            end = round(min(float(duration_seconds), start + 0.001), 6)
+                    else:
+                        start, end = _observation_bounds(
+                            pass_times, index, float(duration_seconds)
+                        )
+                    encoded_observation = json.dumps(
+                        parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+                    )
+                    if len(encoded_observation) > 4096:
+                        warnings.append(
+                            f"The {pass_name} pass omitted keyframe {index + 1} because its "
+                            "validated semantic JSON exceeded the observation limit."
+                        )
+                        continue
+                    field_coverage["scene"] += 1
+                    field_coverage["action"] += 1
+                    field_coverage["shot"] += 1
+                    if parsed["visibleText"] is not None:
+                        field_coverage["visible_text"] += 1
+                    if parsed["uncertainties"] is not None:
+                        field_coverage["uncertainties"] += 1
+                    observations.append(
+                        {
+                            "kind": "nanollava-keyframe-semantics",
+                            "startTime": start,
+                            "endTime": end,
+                            "text": encoded_observation,
+                            "labels": [
+                                "model-derived",
+                                "single-keyframe",
+                                "nanollava-fallback",
+                                f"pass:{pass_name}",
+                            ],
+                        }
+                    )
+            ran_hook_pass = bool(hook_frames)
         if not frames or not observations:
             raise NanoLlavaOutputError(
                 "NanoLLaVA returned no contract-valid keyframe observations."
@@ -848,8 +982,12 @@ class NanoLlavaSemanticAdapter:
             model_weights_sha256=MODEL_WEIGHTS_SHA256,
             adapter_id=ADAPTER_ID,
             code_revision=WORKER_CODE_REVISION,
-            preprocessing_id=PREPROCESSING_ID,
-            preprocessing_sha256=PREPROCESSING_SHA256,
+            preprocessing_id=(
+                TWO_PASS_PREPROCESSING_ID if ran_hook_pass else PREPROCESSING_ID
+            ),
+            preprocessing_sha256=(
+                TWO_PASS_PREPROCESSING_SHA256 if ran_hook_pass else PREPROCESSING_SHA256
+            ),
         )
         output = {
             "schemaVersion": WORKER_OUTPUT_SCHEMA_VERSION,

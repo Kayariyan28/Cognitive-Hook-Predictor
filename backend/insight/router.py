@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .config import InsightSettings
 from .experiments import ExperimentError, ExperimentRequest, ExperimentTracker
+from .outcomes import OutcomeImportError, OutcomeLedger
 from .service import InsightRequest, InsightService
 from .store import InsightStoreError
 
@@ -82,6 +83,7 @@ def create_insight_router(
     settings: InsightSettings | None = None,
     forecast_result_loader: Any = None,
     tracker: ExperimentTracker | None = None,
+    outcome_ledger: OutcomeLedger | None = None,
 ) -> APIRouter:
     active_settings = settings or InsightSettings.from_env()
     active_service = service or InsightService(
@@ -245,5 +247,86 @@ def create_insight_router(
         if record is None:
             raise _http_error(404, "experiment_not_found", "Experiment was not found.")
         return JSONResponse(record, headers=PRIVATE_NO_STORE_HEADERS)
+
+    # -- outcomes ----------------------------------------------------------
+    #
+    # Creator-declared labels for a future calibration head. These routes write
+    # to a store nothing in the insight path can read.
+
+    @router.post("/outcomes", status_code=201)
+    async def import_outcomes(request: Request) -> JSONResponse:
+        if outcome_ledger is None:
+            raise _http_error(
+                503,
+                "outcomes_unavailable",
+                "Outcome ingestion is not configured on this service.",
+            )
+        raw = await request.body()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise _http_error(
+                400, "invalid_request", "the CSV must be UTF-8 encoded"
+            ) from exc
+        try:
+            document = outcome_ledger.import_csv(text)
+        except OutcomeImportError as exc:
+            return JSONResponse(
+                exc.as_dict(), status_code=422, headers=PRIVATE_NO_STORE_HEADERS
+            )
+        except InsightStoreError as exc:
+            raise _http_error(
+                500, "insight_storage_failed", "Outcome state could not be persisted."
+            ) from exc
+        return JSONResponse(document, status_code=201, headers=PRIVATE_NO_STORE_HEADERS)
+
+    @router.get("/outcomes")
+    def list_outcomes() -> JSONResponse:
+        if outcome_ledger is None:
+            raise _http_error(
+                503,
+                "outcomes_unavailable",
+                "Outcome ingestion is not configured on this service.",
+            )
+        try:
+            sets = outcome_ledger.list_sets()
+        except InsightStoreError as exc:
+            raise _http_error(
+                500, "insight_storage_failed", "Stored outcome state is unreadable."
+            ) from exc
+        return JSONResponse(
+            {
+                "schemaVersion": "insight-outcome-list/1",
+                "outcomeSets": sets,
+                "limits": (
+                    "Creator-declared, unverified post-publish numbers. They are training "
+                    "labels for a future calibration head and are never read by the "
+                    "insight lane."
+                ),
+            },
+            headers=PRIVATE_NO_STORE_HEADERS,
+        )
+
+    @router.delete("/outcomes/{outcome_set_id}")
+    def delete_outcomes(outcome_set_id: str) -> JSONResponse:
+        if outcome_ledger is None:
+            raise _http_error(
+                503,
+                "outcomes_unavailable",
+                "Outcome ingestion is not configured on this service.",
+            )
+        identifier = _result_id(outcome_set_id, "outcomeSetId")
+        try:
+            deleted = outcome_ledger.delete(identifier)
+        except InsightStoreError as exc:
+            raise _http_error(
+                500, "insight_storage_failed", "Outcome state could not be removed."
+            ) from exc
+        if not deleted:
+            raise _http_error(404, "outcomes_not_found", "Outcome set was not found.")
+        return JSONResponse(
+            {"outcomeSetId": identifier, "deleted": True},
+            headers=PRIVATE_NO_STORE_HEADERS,
+        )
 
     return router

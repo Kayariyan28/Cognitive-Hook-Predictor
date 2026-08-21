@@ -24,10 +24,12 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping, Protocol
 
 from .nanollava import (
+    HOOK_FRAME_TIMES,
     KEYFRAME_COUNT,
     FfmpegKeyframeExtractor,
     NanoLlavaUnavailable,
     deterministic_sample_times,
+    hook_frame_times,
 )
 
 
@@ -35,9 +37,15 @@ SCHEMA_VERSION = "creator-forecast-ocr/1"
 BRANCH = "ocr"
 ADAPTER_ID = "on-screen-text-recognition"
 EVIDENCE_KIND = "measured-on-screen-text"
-# The keyframe contract is NanoLLaVA's, deliberately: the same six frames, at
-# the same times, at the same size, are read by both branches.
-PREPROCESSING_ID = "ffmpeg-keyframes-6x384-png-center-sampled/1"
+# Two passes. The clip pass is NanoLLaVA's contract, deliberately: the same six
+# frames, at the same times, at the same size, are read by both branches. The
+# hook pass exists because that contract samples proportionally, so past roughly
+# 36 seconds none of its frames land inside the first three seconds and on-screen
+# hook text becomes invisible. Hook frames are sampled at fixed absolute times.
+CLIP_PREPROCESSING_ID = "ffmpeg-keyframes-6x384-png-center-sampled/1"
+HOOK_PREPROCESSING_ID = "ffmpeg-hookframes-6x384-png-absolute/1"
+PREPROCESSING_ID = f"{CLIP_PREPROCESSING_ID}+{HOOK_PREPROCESSING_ID}"
+HOOK_FRAME_SPAN_SECONDS = 0.4
 ENGINES = ("ocrmac", "pytesseract")
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -259,6 +267,31 @@ def _observation_bounds(
     return round(start, 6), round(end, 6)
 
 
+def _frame_observation(
+    index: int,
+    start: float,
+    end: float,
+    blocks: list[dict[str, Any]],
+    engine: str,
+    pass_name: str,
+) -> Mapping[str, Any]:
+    return MappingProxyType(
+        {
+            "kind": "ocr-frame-text-blocks",
+            "startTime": start,
+            "endTime": end,
+            "text": json.dumps(blocks, ensure_ascii=False, separators=(",", ":")),
+            "labels": (
+                "ocr",
+                f"frame:{index}",
+                f"engine:{engine}",
+                f"pass:{pass_name}",
+                "not-semantic",
+            ),
+        }
+    )
+
+
 class OcrScreenTextAdapter:
     """An on-screen-text branch that records which engine actually ran."""
 
@@ -376,51 +409,72 @@ class OcrScreenTextAdapter:
             raise OcrUnavailable("No configured text-recognition engine is available.")
 
         started_at = _utc_now()
-        sample_times = deterministic_sample_times(float(duration_seconds), KEYFRAME_COUNT)
+        duration = float(duration_seconds)
+        clip_times = deterministic_sample_times(duration, KEYFRAME_COUNT)
+        hook_times = hook_frame_times(duration)
         recognizer = self._recognizer_for(engine)
         observations: list[Mapping[str, Any]] = []
         block_count = 0
         frames_with_text = 0
+        hook_blocks = 0
+        hook_frames_with_text = 0
+
+        def read(image_path: Path) -> list[dict[str, Any]]:
+            try:
+                return _validated_blocks(recognizer.recognize(image_path))
+            except OcrUnavailable:
+                raise
+            except Exception as exc:
+                raise OcrUnavailable(
+                    f"The {engine} recognition engine failed: {type(exc).__name__}"
+                ) from exc
 
         with tempfile.TemporaryDirectory(prefix="signalframe-ocr-") as workspace:
+            root = Path(workspace)
+            (root / "clip").mkdir(parents=True, exist_ok=True)
+            (root / "hook").mkdir(parents=True, exist_ok=True)
             try:
-                frames = self.extractor.extract(
-                    video_path, float(duration_seconds), Path(workspace)
+                clip_frames = self.extractor.extract(video_path, duration, root / "clip")
+                hook_frames = self.extractor.extract(
+                    video_path, duration, root / "hook", sample_times=hook_times
                 )
             except NanoLlavaUnavailable as exc:
                 raise OcrUnavailable(
                     "Deterministic keyframe extraction is unavailable for this clip."
                 ) from exc
-            if len(frames) != KEYFRAME_COUNT:
+            except TypeError as exc:  # an extractor without the two-pass contract
+                raise OcrUnavailable(
+                    "The configured keyframe extractor cannot sample the hook window."
+                ) from exc
+            if len(clip_frames) != KEYFRAME_COUNT:
                 raise OcrUnavailable("The keyframe contract requires exactly six frames.")
-            for index, (_, image_path) in enumerate(frames):
-                try:
-                    blocks = _validated_blocks(recognizer.recognize(image_path))
-                except OcrUnavailable:
-                    raise
-                except Exception as exc:
-                    raise OcrUnavailable(
-                        f"The {engine} recognition engine failed: {type(exc).__name__}"
-                    ) from exc
-                start, end = _observation_bounds(sample_times, index, float(duration_seconds))
+            if not hook_frames:
+                raise OcrUnavailable("The hook pass produced no frame.")
+
+            for index, (_, image_path) in enumerate(clip_frames):
+                blocks = read(image_path)
+                start, end = _observation_bounds(clip_times, index, duration)
                 block_count += len(blocks)
                 if blocks:
                     frames_with_text += 1
                 observations.append(
-                    MappingProxyType(
-                        {
-                            "kind": "ocr-frame-text-blocks",
-                            "startTime": start,
-                            "endTime": end,
-                            "text": json.dumps(blocks, ensure_ascii=False, separators=(",", ":")),
-                            "labels": (
-                                "ocr",
-                                f"frame:{index}",
-                                f"engine:{engine}",
-                                "not-semantic",
-                            ),
-                        }
-                    )
+                    _frame_observation(index, start, end, blocks, engine, "clip")
+                )
+
+            for offset, (sample_time, image_path) in enumerate(hook_frames):
+                blocks = read(image_path)
+                index = len(clip_frames) + offset
+                start = round(float(sample_time), 6)
+                end = round(min(duration, start + HOOK_FRAME_SPAN_SECONDS), 6)
+                if end <= start:
+                    end = round(min(duration, start + 0.001), 6)
+                block_count += len(blocks)
+                hook_blocks += len(blocks)
+                if blocks:
+                    frames_with_text += 1
+                    hook_frames_with_text += 1
+                observations.append(
+                    _frame_observation(index, start, end, blocks, engine, "hook")
                 )
 
         features = MappingProxyType(
@@ -428,6 +482,9 @@ class OcrScreenTextAdapter:
                 "ocr.frames_read": float(len(observations)),
                 "ocr.frames_with_text": float(frames_with_text),
                 "ocr.block_count": float(block_count),
+                "ocr.hook_frames_read": float(len(hook_times)),
+                "ocr.hook_frames_with_text": float(hook_frames_with_text),
+                "ocr.hook_block_count": float(hook_blocks),
             }
         )
         return OcrOutput(

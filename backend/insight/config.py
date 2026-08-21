@@ -24,6 +24,8 @@ DEFAULT_MAX_OUTPUT_TOKENS = 1536
 DEFAULT_TIMEOUT_SECONDS = 120.0
 DEFAULT_MAX_OUTPUT_BYTES = 256 * 1024
 OCR_ENGINES = ("ocrmac", "pytesseract")
+DEFAULT_COMPARATIVE_MINIMUM_CLIPS = 20
+DEFAULT_COMPARATIVE_WINDOW = 50
 
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 
@@ -80,6 +82,8 @@ class InsightSettings:
     asr_model: str
     asr_model_revision: str
     ocr_engine: str
+    comparative_minimum_clips: int
+    comparative_window: int
 
     @property
     def temperature(self) -> float:
@@ -111,6 +115,8 @@ class InsightSettings:
             "maxOutputTokens": self.max_output_tokens,
             "timeoutSeconds": self.timeout_seconds,
             "temperature": self.temperature,
+            "comparativeMinimumClips": self.comparative_minimum_clips,
+            "comparativeWindow": self.comparative_window,
         }
 
     @classmethod
@@ -160,4 +166,15 @@ class InsightSettings:
             or DEFAULT_ASR_MODEL,
             asr_model_revision=source.get("INSIGHT_ASR_MODEL_REVISION", "").strip().lower(),
             ocr_engine=ocr_engine,
+            comparative_minimum_clips=_positive_int(
+                source.get(
+                    "INSIGHT_COMPARATIVE_MINIMUM_CLIPS",
+                    str(DEFAULT_COMPARATIVE_MINIMUM_CLIPS),
+                ),
+                name="INSIGHT_COMPARATIVE_MINIMUM_CLIPS",
+            ),
+            comparative_window=_positive_int(
+                source.get("INSIGHT_COMPARATIVE_WINDOW", str(DEFAULT_COMPARATIVE_WINDOW)),
+                name="INSIGHT_COMPARATIVE_WINDOW",
+            ),
         )

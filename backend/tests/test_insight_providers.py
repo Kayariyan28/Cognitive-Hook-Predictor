@@ -8,7 +8,7 @@ from backend.insight.config import (
     InsightConfigurationError,
     InsightSettings,
 )
-from backend.insight.prompts.hook_doctor_v1 import (
+from backend.insight.prompts.hook_doctor import (
     PROMPT_TEMPLATE_ID,
     build_user_message,
     prompt_hash,
@@ -93,7 +93,7 @@ class PromptTemplateTests(unittest.TestCase):
     def test_template_hash_is_stable(self):
         self.assertEqual(prompt_hash(), prompt_hash())
         self.assertEqual(len(prompt_hash()), 64)
-        self.assertEqual(PROMPT_TEMPLATE_ID, "hook-doctor.v1")
+        self.assertEqual(PROMPT_TEMPLATE_ID, "hook-doctor.v2")
 
     def test_template_embeds_the_shared_term_lists_and_limits(self):
         rendered = system_prompt()
@@ -113,7 +113,7 @@ class PromptTemplateTests(unittest.TestCase):
         self.assertNotIn("/incoming/", message)
 
     def test_prompt_hash_tracks_the_term_vocabulary(self):
-        import backend.insight.prompts.hook_doctor_v1 as template
+        import backend.insight.prompts.hook_doctor as template
 
         original = prompt_hash()
         patched = template.TEMPLATE.replace("Hook Doctor", "Hook Doctor v2")

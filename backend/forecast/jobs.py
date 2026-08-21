@@ -614,6 +614,17 @@ class ForecastJobStore:
             shutil.rmtree(staging, ignore_errors=True)
             raise
 
+    def list_result_ids(self) -> list[str]:
+        """Read-only listing of published results; used for comparative context."""
+
+        if not self.results_dir.is_dir():
+            return []
+        return sorted(
+            entry.name
+            for entry in self.results_dir.iterdir()
+            if entry.is_dir() and not entry.name.startswith(".")
+        )
+
     def read_result(self, result_id: str) -> dict[str, Any] | None:
         payload = self._read_json(self.results_dir / result_id / "result.json")
         if payload is None:
