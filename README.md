@@ -145,6 +145,18 @@ python3.11 -m venv "$SIGNALFRAME_RUNTIME/py311"
 export SIGNALFRAME_BACKEND_PYTHON="$SIGNALFRAME_RUNTIME/py311/bin/python"
 
 "$SIGNALFRAME_BACKEND_PYTHON" -m pip install --upgrade pip wheel
+"$SIGNALFRAME_BACKEND_PYTHON" -m pip install -r backend/requirements-local.txt
+```
+
+That is enough to run the interface, evidence jobs, measured audio, the hook
+readout, the insight service, recuts, variants, experiments and outcomes. Every
+model-backed lane reports itself unavailable with a reason until its own pinned
+artifact is configured.
+
+Add the cortical lane only when you want it — `backend/requirements.txt` builds
+the pinned TRIBE v2 package from a Git commit and pulls the full stack:
+
+```bash
 "$SIGNALFRAME_BACKEND_PYTHON" -m pip install \
   'torch==2.6.0' 'torchvision==0.21.0'
 "$SIGNALFRAME_BACKEND_PYTHON" -m pip install -r backend/requirements.txt

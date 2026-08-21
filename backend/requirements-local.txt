@@ -1,0 +1,18 @@
+# Model-free local runtime: everything needed to boot the API, run evidence
+# jobs, the hook readout, the insight service, recuts, variants, experiments
+# and outcomes.
+#
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r backend/requirements-local.txt
+#
+# It deliberately omits the pinned TRIBE v2 package from requirements.txt,
+# which builds from a Git commit and pulls the full cortical stack. Install
+# that only when you actually want the cortical lane; every other lane reports
+# itself unavailable with a reason until its own artifact is configured.
+
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+httpx==0.28.1
+numpy==2.2.6
+huggingface-hub==0.34.4
