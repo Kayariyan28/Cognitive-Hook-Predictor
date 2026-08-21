@@ -1,0 +1,38 @@
+# Portable (torch) backends for the optional lanes.
+#
+# Apple silicon remains the primary target and backend/requirements-insight.txt
+# remains the Mac path. This file is the alternative for hosts where MLX does
+# not exist — an NVIDIA Colab runtime, a Linux box, or plain CPU — so those
+# lanes are not simply locked out.
+#
+#   python -m pip install -r backend/requirements-local.txt
+#   python -m pip install -r backend/requirements-portable.txt
+#
+# Then select the portable backends explicitly:
+#
+#   INSIGHT_ASR_BACKEND=transformers
+#   FORECAST_NANOLLAVA_BACKEND=transformers
+#   INSIGHT_PROVIDER=torch-local          # or anthropic, for the remote provider
+#   INSIGHT_OCR_ENGINE=pytesseract
+#   SIGNALFRAME_TORCH_DEVICE=auto         # auto | cuda | mps | cpu
+#
+# Every lane still needs its revision pinned to a 40-character commit before it
+# will run; an unpinned lane stays unavailable by design.
+#
+# torch is deliberately unpinned here: the correct build depends on the host's
+# CUDA version, and Colab ships a working one already. Install it from the
+# index that matches your machine, then install this file.
+torch
+transformers==4.57.1
+accelerate==1.10.1
+
+# The transcript lane's audio path.
+librosa==0.11.0
+soundfile==0.13.1
+
+# The on-screen-text lane's non-Apple engine. Also needs the `tesseract`
+# binary on PATH (apt-get install tesseract-ocr).
+pytesseract==0.3.13
+
+# The portable NanoLLaVA backend reads frames through Pillow.
+pillow==11.3.0

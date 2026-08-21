@@ -14,10 +14,12 @@ from .base import (
     ProviderUnavailableError,
 )
 from .mlx_local import MlxLocalProvider, strict_json_object
+from .torch_local import TorchLocalProvider
 
 
 PROVIDER_CLASSES = {
     "mlx-local": MlxLocalProvider,
+    "torch-local": TorchLocalProvider,
     "anthropic": AnthropicProvider,
 }
 
@@ -43,6 +45,7 @@ __all__ = [
     "GenerationResult",
     "InsightProvider",
     "MlxLocalProvider",
+    "TorchLocalProvider",
     "PROVIDER_CLASSES",
     "ProviderExecutionError",
     "ProviderUnavailableError",

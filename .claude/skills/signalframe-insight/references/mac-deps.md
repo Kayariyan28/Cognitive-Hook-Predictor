@@ -1,7 +1,17 @@
-# Mac-only dependencies for the insight layer
+# Runtime dependencies for the insight layer
 
-Apple Silicon is the primary target. **No CUDA-only code path may be introduced anywhere.**
-Optional acceleration is guarded and falls back explicitly, never silently.
+Apple Silicon is the primary target and the MLX backends are the defaults. **No CUDA-only
+code path may be introduced anywhere.** Optional acceleration is guarded and falls back
+explicitly, never silently.
+
+Three lanes also have a portable `torch` backend so a Linux or CUDA host is not locked out:
+the transcript lane, the NanoLLaVA keyframe lane, and the local insight provider. They are
+selected by configuration only, never by autodetection, and each one is a **separate pinned
+artifact** — MLX-quantised repositories cannot be read by torch, so the portable backends
+name different repositories and carry their own model identity into the manifest.
+
+TPU/XLA is not supported by any lane, and a device request naming it is refused by name
+rather than silently ignored.
 
 Insight dependencies are **not** in `backend/requirements.txt`. They live in
 `backend/requirements-insight.txt` with exact pinned versions so the model-free CI job keeps
@@ -14,6 +24,9 @@ anthropic==0.75.0
 ocrmac==1.0.0
 pytesseract==0.3.13
 ```
+
+The portable backends live in `backend/requirements-portable.txt` (`torch`,
+`transformers`, `accelerate`, `librosa`, `soundfile`, `pytesseract`, `pillow`).
 
 Every one of these is imported lazily inside the adapter that needs it. An `ImportError`
 means that adapter reports `unavailable` with a reason — it never breaks module import, the
@@ -28,7 +41,10 @@ a pinned-revision check. It must not download weights, load a model, or make a n
 | --- | --- |
 | `mlx-local` | `mlx_lm` importable, `INSIGHT_LOCAL_MODEL` set, `INSIGHT_LOCAL_MODEL_REVISION` is a 40-hex commit SHA, and the revision verifies before load |
 | `anthropic` | `INSIGHT_CLOUD_ENABLED=true`, `ANTHROPIC_API_KEY` present, `anthropic` importable, `INSIGHT_ANTHROPIC_MODEL` set |
+| `torch-local` | `torch` and `transformers` importable, `INSIGHT_LOCAL_MODEL` set, `INSIGHT_LOCAL_MODEL_REVISION` is a 40-hex commit SHA, the requested device resolves, and the revision verifies before load |
 | ASR (`mlx-whisper`) | `mlx_whisper` importable and `INSIGHT_ASR_MODEL_REVISION` is a 40-hex commit SHA |
+| ASR (`transformers`) | `transformers` importable, the requested device resolves, and `INSIGHT_ASR_MODEL_REVISION` is a 40-hex commit SHA |
+| NanoLLaVA (`transformers`) | `torch` and `transformers` importable, the requested device resolves, `FORECAST_NANOLLAVA_TORCH_REVISION` is a 40-hex commit SHA, and `FORECAST_NANOLLAVA_TRUST_REMOTE_CODE=true` — those weights ship an `auto_map`, so loading them runs model code from the pinned snapshot and must be opted into |
 | OCR (`ocrmac`) | `ocrmac` importable and Apple Vision usable; records `sw_vers -productVersion` |
 | OCR fallback | `pytesseract` importable **and** the `tesseract` binary on `PATH` |
 
@@ -50,6 +66,22 @@ INSIGHT_ASR_MODEL=mlx-community/whisper-large-v3-turbo
 INSIGHT_ASR_MODEL_REVISION=
 INSIGHT_OCR_ENGINE=ocrmac
 ```
+
+Portable-backend keys. Defaults keep every lane on its MLX backend, so an existing Mac
+install is unaffected by their presence:
+
+```
+SIGNALFRAME_TORCH_DEVICE=auto            # auto | cuda | mps | cpu
+SIGNALFRAME_TORCH_DTYPE=auto             # auto | float32 | float16 | bfloat16
+INSIGHT_ASR_BACKEND=mlx-whisper          # mlx-whisper | transformers
+FORECAST_NANOLLAVA_BACKEND=mlx-vlm       # mlx-vlm | transformers
+FORECAST_NANOLLAVA_TORCH_MODEL=qnguyen3/nanoLLaVA-1.5
+FORECAST_NANOLLAVA_TORCH_REVISION=
+FORECAST_NANOLLAVA_TRUST_REMOTE_CODE=false
+```
+
+`INSIGHT_PROVIDER` also accepts `torch-local`, whose default model is the upstream
+`Qwen/Qwen2.5-7B-Instruct` rather than the MLX-quantised repository torch cannot read.
 
 `ANTHROPIC_API_KEY` is never echoed by `/api/insight/v1/status`, never logged, and never
 written into a provenance manifest or a rejection record.

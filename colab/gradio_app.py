@@ -11,9 +11,11 @@ Run it with::
     python -m colab.gradio_app            # starts the API too, then the UI
     SIGNALFRAME_API=http://127.0.0.1:8000 python -m colab.gradio_app  # reuse one
 
-On Colab, ``share=True`` gives you a public URL. Two lanes cannot run there at
-all: the local insight model (mlx-lm) and the transcript branch (mlx-whisper)
-are Apple-silicon only. The interface says so rather than hiding it.
+On Colab, ``share=True`` gives you a public URL. Every lane has a runtime that
+works there: the transcript, keyframe and insight lanes each have a portable
+torch backend alongside their Apple-silicon default, and on-screen text falls
+to tesseract. What a lane still needs is its pinned revision — the interface
+says which, rather than hiding it.
 """
 
 from __future__ import annotations
@@ -129,15 +131,23 @@ def read_status() -> tuple[str, str]:
         "### What can and cannot run here",
         "",
         "- **`measuredAudio`** needs only `ffmpeg`, so it works anywhere.",
-        "- **`ocr`** works on Linux through the `pytesseract` fallback "
+        "- **`ocr`** works on Linux through the `pytesseract` engine "
         "(`apt-get install tesseract-ocr`); Apple Vision is macOS-only.",
+        "- **`asr`** and **`semanticModel`** run here through their portable "
+        "`transformers` backends on CUDA, MPS or CPU. They load *different* "
+        "pinned repositories from the Apple ones, because MLX-quantised weights "
+        "cannot be read by torch, and the manifest records which one ran.",
         "- **`tribeCortical`**, **`vjepa21`** and **`audioModel`** can run on a "
         "Colab GPU once their pinned, hash-verified artifacts are installed.",
-        "- **`asr`** (mlx-whisper) and **`semanticModel`** (mlx_vlm) are "
-        "Apple-silicon only and cannot run on Colab at all.",
-        "- The **local insight model** (mlx-lm) is Apple-silicon only. On Colab, "
-        "set `INSIGHT_PROVIDER=anthropic`, `INSIGHT_CLOUD_ENABLED=true` and "
-        "`ANTHROPIC_API_KEY` to use the remote provider instead.",
+        "- The **insight lane** runs locally via `INSIGHT_PROVIDER=torch-local`, "
+        "or remotely via `anthropic` with `INSIGHT_CLOUD_ENABLED=true` and a key.",
+        "",
+        "Every model lane stays unavailable until its revision is pinned to a "
+        "full 40-character commit SHA. A mutable name like `main` would make a "
+        "result impossible to reproduce, so it is refused rather than accepted.",
+        "",
+        "TPU is not supported by any lane. A device request naming it is refused "
+        "by name rather than silently ignored.",
         "",
         "A lane reporting unavailable is the design working: it names what it "
         "needs rather than substituting anything.",

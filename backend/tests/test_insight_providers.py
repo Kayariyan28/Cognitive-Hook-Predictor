@@ -358,7 +358,10 @@ class ProviderSelectionTests(unittest.TestCase):
 
     def test_status_can_explain_every_provider(self):
         entries = all_availability(settings())
-        self.assertEqual([entry["provider"] for entry in entries], ["anthropic", "mlx-local"])
+        self.assertEqual(
+            [entry["provider"] for entry in entries],
+            ["anthropic", "mlx-local", "torch-local"],
+        )
         for entry in entries:
             self.assertIn("reason", entry)
             self.assertNotIn("apiKey", repr(entry))

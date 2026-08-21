@@ -16,9 +16,17 @@ import re
 from typing import Any, Mapping
 
 
-INSIGHT_PROVIDERS = ("mlx-local", "anthropic")
+INSIGHT_PROVIDERS = ("mlx-local", "torch-local", "anthropic")
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_LOCAL_MODEL = "mlx-community/Qwen2.5-7B-Instruct-4bit"
+# torch cannot read MLX-quantised weights, so the portable provider defaults to
+# the upstream repository rather than inheriting a model it could never load.
+DEFAULT_TORCH_LOCAL_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_LOCAL_MODELS = {
+    "mlx-local": DEFAULT_LOCAL_MODEL,
+    "torch-local": DEFAULT_TORCH_LOCAL_MODEL,
+    "anthropic": DEFAULT_LOCAL_MODEL,
+}
 DEFAULT_ASR_MODEL = "mlx-community/whisper-large-v3-turbo"
 DEFAULT_MAX_OUTPUT_TOKENS = 1536
 DEFAULT_TIMEOUT_SECONDS = 120.0
@@ -75,6 +83,8 @@ class InsightSettings:
     anthropic_model: str
     local_model: str
     local_model_revision: str
+    local_device: str
+    local_dtype: str
     max_output_tokens: int
     timeout_seconds: float
     max_output_bytes: int
@@ -111,6 +121,8 @@ class InsightSettings:
             "anthropicModel": self.anthropic_model,
             "localModel": self.local_model,
             "localModelRevision": self.local_model_revision or None,
+            "localDevice": self.local_device,
+            "localDtype": self.local_dtype,
             "localRevisionPinned": self.local_revision_is_pinned,
             "maxOutputTokens": self.max_output_tokens,
             "timeoutSeconds": self.timeout_seconds,
@@ -144,9 +156,15 @@ class InsightSettings:
                 "INSIGHT_ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL
             ).strip()
             or DEFAULT_ANTHROPIC_MODEL,
-            local_model=source.get("INSIGHT_LOCAL_MODEL", DEFAULT_LOCAL_MODEL).strip()
-            or DEFAULT_LOCAL_MODEL,
+            local_model=source.get(
+                "INSIGHT_LOCAL_MODEL", DEFAULT_LOCAL_MODELS[provider]
+            ).strip()
+            or DEFAULT_LOCAL_MODELS[provider],
             local_model_revision=source.get("INSIGHT_LOCAL_MODEL_REVISION", "").strip().lower(),
+            local_device=source.get("SIGNALFRAME_TORCH_DEVICE", "auto").strip().lower()
+            or "auto",
+            local_dtype=source.get("SIGNALFRAME_TORCH_DTYPE", "auto").strip().lower()
+            or "auto",
             max_output_tokens=_positive_int(
                 source.get("INSIGHT_MAX_OUTPUT_TOKENS", str(DEFAULT_MAX_OUTPUT_TOKENS)),
                 name="INSIGHT_MAX_OUTPUT_TOKENS",

@@ -22,6 +22,10 @@ import subprocess
 import tempfile
 from typing import Any, Mapping, Protocol, Sequence
 
+from .torch_runtime import (
+    runtime_request_from_env as torch_request_from_env,
+    unavailable_reason as torch_unavailable_reason,
+)
 from ..worker_protocol import (
     WORKER_OUTPUT_SCHEMA_VERSION,
     BranchOutput,
@@ -57,6 +61,29 @@ PREPROCESSING_ID = "ffmpeg-keyframes-6x384-png-center-sampled/1"
 PREPROCESSING_SHA256 = (
     "ff850282d6471942fa9a41e26aa23cd3d223c4a6822781af47feffd7497ebbe7"
 )
+# The portable backend's artifact. A different repository from the MLX one on
+# purpose: those weights are MLX-quantised and torch cannot read them.
+TORCH_MODEL_ID = "qnguyen3/nanoLLaVA-1.5"
+TORCH_BACKEND_ENV = "FORECAST_NANOLLAVA_BACKEND"
+TORCH_REVISION_ENV = "FORECAST_NANOLLAVA_TORCH_REVISION"
+TRUST_REMOTE_CODE_ENV = "FORECAST_NANOLLAVA_TRUST_REMOTE_CODE"
+MLX_BACKEND_NAME = "mlx-vlm"
+TORCH_BACKEND_NAME = "transformers"
+NANOLLAVA_BACKENDS = (MLX_BACKEND_NAME, TORCH_BACKEND_NAME)
+TORCH_ADAPTER_ID = "nanollava-keyframe-transformers"
+# The reserved position the model substitutes its vision embedding into.
+IMAGE_TOKEN_INDEX = -200
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+
+
+def _resolve_pinned_torch_snapshot(model_id: str, revision: str) -> str:
+    """Resolve the pinned revision from the local cache, without any network."""
+
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(repo_id=model_id, revision=revision, local_files_only=True)
+
+
 SNAPSHOT_ENV = "FORECAST_NANOLLAVA_SNAPSHOT"
 FFMPEG_ENV = "FORECAST_NANOLLAVA_FFMPEG_BINARY"
 PYTHON_ENV = "FORECAST_NANOLLAVA_PYTHON"
@@ -367,6 +394,166 @@ class MlxVlmSemanticBackend:
         if not isinstance(text, str):
             raise NanoLlavaOutputError("mlx_vlm returned no text result")
         return text
+
+
+class TransformersVlmSemanticBackend:
+    """NanoLLaVA through torch, for hosts where MLX does not exist.
+
+    This is a *different pinned artifact* from the MLX backend, not the same one
+    on other hardware: ``mlx-community/nanoLLaVA-1.5-8bit`` holds MLX-quantised
+    weights torch cannot read, so the portable path names the upstream
+    repository and carries its own model identity into the manifest.
+
+    The upstream repository ships an ``auto_map``, so loading it executes model
+    code from the snapshot. That is a real change in what this lane does, so it
+    is refused unless the operator opts in explicitly. The pinned 40-character
+    commit is the integrity anchor: the hub resolves that revision to exact
+    content, and an unpinned revision keeps the lane unavailable.
+    """
+
+    def __init__(
+        self,
+        model_id: str,
+        revision: str,
+        *,
+        device: str = "auto",
+        dtype: str = "auto",
+        trust_remote_code: bool = False,
+        snapshot_resolver: Any = None,
+        loader: Any = None,
+    ) -> None:
+        self.model_id = model_id
+        self.revision = revision
+        self.device = device
+        self.dtype = dtype
+        self.trust_remote_code = trust_remote_code
+        self._snapshot_resolver = snapshot_resolver or _resolve_pinned_torch_snapshot
+        self._loader = loader
+        self._model: Any = None
+        self._tokenizer: Any = None
+        self._torch: Any = None
+        self.runtime: Any = None
+
+    @staticmethod
+    def installed() -> bool:
+        return (
+            importlib.util.find_spec("transformers") is not None
+            and importlib.util.find_spec("torch") is not None
+        )
+
+    def unavailable_reason(self) -> str | None:
+        """Why this backend could not run here, or ``None`` if it could."""
+
+        if not COMMIT_RE.fullmatch(self.revision or ""):
+            return (
+                f"{TORCH_REVISION_ENV} must be a full 40-character commit SHA; "
+                "mutable names such as 'main' are rejected."
+            )
+        if not self.trust_remote_code:
+            return (
+                f"{TRUST_REMOTE_CODE_ENV} is not enabled. The portable NanoLLaVA "
+                "weights ship an auto_map, so loading them runs model code from "
+                "the pinned snapshot. Enable it only if you accept that."
+            )
+        if self._loader is None and not self.installed():
+            return "transformers and torch are not installed in this backend environment."
+        if self._loader is None:
+            blocked = torch_unavailable_reason(
+                requested_device=self.device, requested_dtype=self.dtype
+            )
+            if blocked:
+                return blocked
+        try:
+            self._snapshot_resolver(self.model_id, self.revision)
+        except Exception:
+            return (
+                "The pinned NanoLLaVA revision is not present in the local snapshot "
+                "cache. Fetch it once before running offline."
+            )
+        return None
+
+    def _load(self) -> None:
+        if self._model is not None:
+            return
+        blocked = self.unavailable_reason()
+        if blocked:
+            raise NanoLlavaUnavailable(blocked)
+        snapshot = self._snapshot_resolver(self.model_id, self.revision)
+        if self._loader is not None:
+            self._model, self._tokenizer, self._torch = self._loader(snapshot)
+            return
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+
+            from .torch_runtime import resolve_runtime, torch_dtype
+
+            runtime = resolve_runtime(
+                requested_device=self.device,
+                requested_dtype=self.dtype,
+                torch_module=torch,
+            )
+            self.runtime = runtime
+            model = AutoModelForCausalLM.from_pretrained(
+                snapshot,
+                torch_dtype=torch_dtype(torch, runtime.dtype),
+                trust_remote_code=True,
+            ).to(runtime.device)
+            model.eval()
+            self._model = model
+            self._tokenizer = AutoTokenizer.from_pretrained(
+                snapshot, trust_remote_code=True
+            )
+            self._torch = torch
+        except Exception as exc:
+            raise NanoLlavaUnavailable(
+                "The optional transformers runtime could not load the pinned "
+                f"NanoLLaVA snapshot: {type(exc).__name__}"
+            ) from exc
+
+    def describe(self, image_path: Path, prompt: str) -> str:
+        """One frame, one description, following the model's documented interface."""
+
+        self._load()
+        torch = self._torch
+        tokenizer = self._tokenizer
+        model = self._model
+
+        messages = [{"role": "user", "content": f"<image>\n{prompt}"}]
+        text = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        # The image occupies one reserved position in the token stream; the model
+        # substitutes its own vision embedding at index -200.
+        before, _, after = text.partition("<image>")
+        head = tokenizer(before).input_ids
+        tail = tokenizer(after).input_ids[1:]
+        input_ids = torch.tensor(
+            head + [IMAGE_TOKEN_INDEX] + tail, dtype=torch.long
+        ).unsqueeze(0)
+
+        from PIL import Image
+
+        with Image.open(image_path) as handle:
+            image = handle.convert("RGB")
+            pixels = model.process_images([image], model.config)
+        pixels = pixels.to(dtype=model.dtype, device=model.device)
+        input_ids = input_ids.to(device=model.device)
+
+        with torch.inference_mode():
+            produced = model.generate(
+                input_ids,
+                images=pixels,
+                max_new_tokens=MAX_TOKENS,
+                do_sample=False,
+                use_cache=True,
+            )[0]
+        text_out = tokenizer.decode(
+            produced[input_ids.shape[1]:], skip_special_tokens=True
+        )
+        if not isinstance(text_out, str) or not text_out.strip():
+            raise NanoLlavaOutputError("the transformers runtime returned no text result")
+        return text_out.strip()
 
 
 class IsolatedMlxVlmBatchBackend:
@@ -700,8 +887,31 @@ class NanoLlavaSemanticAdapter:
             "no",
             "off",
         }
+        kind = str(source.get(TORCH_BACKEND_ENV, MLX_BACKEND_NAME)).strip().lower()
+        if kind not in NANOLLAVA_BACKENDS:
+            raise ValueError(
+                f"{TORCH_BACKEND_ENV} must be one of {list(NANOLLAVA_BACKENDS)}"
+            )
         raw_python = str(source.get(PYTHON_ENV, "")).strip()
         backend: SemanticBackend | BatchSemanticBackend | None = None
+        if kind == TORCH_BACKEND_NAME:
+            device, dtype = torch_request_from_env(source)
+            return cls(
+                snapshot,
+                backend=TransformersVlmSemanticBackend(
+                    str(source.get("FORECAST_NANOLLAVA_TORCH_MODEL", TORCH_MODEL_ID)).strip()
+                    or TORCH_MODEL_ID,
+                    str(source.get(TORCH_REVISION_ENV, "")).strip().lower(),
+                    device=device,
+                    dtype=dtype,
+                    trust_remote_code=str(
+                        source.get(TRUST_REMOTE_CODE_ENV, "false")
+                    ).strip().lower()
+                    in {"1", "true", "yes", "on"},
+                ),
+                frame_extractor=FfmpegKeyframeExtractor(binary=binary),
+                hook_pass=hook_pass,
+            )
         if raw_python:
             raw_timeout = str(source.get(SUBPROCESS_TIMEOUT_ENV, "300")).strip()
             configuration_error: str | None = None
@@ -736,6 +946,8 @@ class NanoLlavaSemanticAdapter:
         )
 
     def availability(self) -> dict[str, Any]:
+        if isinstance(self.backend, TransformersVlmSemanticBackend):
+            return self._torch_availability(self.backend)
         snapshot_present = self.snapshot.is_dir() and (
             self.snapshot / "model.safetensors"
         ).is_file()
@@ -779,7 +991,45 @@ class NanoLlavaSemanticAdapter:
             },
         }
 
+    def _torch_availability(
+        self, backend: "TransformersVlmSemanticBackend"
+    ) -> dict[str, Any]:
+        """Readiness for the portable backend, with its own model identity.
+
+        The MLX weight digest is deliberately absent: this is a different
+        artifact, anchored by its pinned commit rather than by that hash.
+        """
+
+        reason = backend.unavailable_reason()
+        return {
+            "configured": bool(COMMIT_RE.fullmatch(backend.revision or "")),
+            "executionAvailable": reason is None,
+            "reason": reason,
+            "role": "nanollava-keyframe-semantic-fallback",
+            "isVideoLlama": False,
+            "usesAudio": False,
+            "usesLearnedModel": True,
+            "provenance": {
+                "modelId": backend.model_id,
+                "modelRevision": backend.revision or None,
+                "license": MODEL_LICENSE,
+                "adapterId": TORCH_ADAPTER_ID,
+                "codeRevision": WORKER_CODE_REVISION,
+                "preprocessingId": PREPROCESSING_ID,
+                "preprocessingSha256": PREPROCESSING_SHA256,
+                "trustRemoteCode": backend.trust_remote_code,
+            },
+        }
+
     def _verify_snapshot(self) -> None:
+        if isinstance(self.backend, TransformersVlmSemanticBackend):
+            # A different artifact with a different integrity anchor: the pinned
+            # commit, checked when the backend resolves its snapshot. Applying the
+            # MLX weight digest here would always fail, and faking it would be worse.
+            blocked = self.backend.unavailable_reason()
+            if blocked:
+                raise NanoLlavaUnavailable(blocked)
+            return
         required = (
             self.snapshot / "model.safetensors",
             self.snapshot / "config.json",

@@ -1,10 +1,17 @@
-"""Transcript evidence from a pinned mlx-whisper model.
+"""Transcript evidence from a pinned Whisper model.
 
 A transcript records the words that were spoken and when. It records nothing
 about who spoke, how they felt, or how anyone will respond. The branch reuses
 the existing deterministic 16 kHz mono decode contract rather than adding a
-second ffmpeg path, and it fails on its own: a missing model or an absent MLX
+second ffmpeg path, and it fails on its own: a missing model or an absent
 runtime makes this one branch unavailable while the job still completes.
+
+Two interchangeable runtimes sit behind one `Transcriber` protocol. `mlx-whisper`
+stays the default because Apple silicon is the primary target; `transformers`
+runs the same lane on CUDA, MPS or CPU so a Linux or Colab host is not simply
+locked out. They are separate pinned artifacts with separate provenance — the
+MLX repository holds MLX-quantised weights that torch cannot read, so the two
+backends genuinely are different models and the manifest says which one ran.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 import numpy as np
 
+from .torch_runtime import runtime_request_from_env, unavailable_reason
 from .measured_audio import (
     SAMPLE_RATE,
     FfmpegPcmDecoder,
@@ -33,11 +41,30 @@ from .measured_audio import (
 SCHEMA_VERSION = "creator-forecast-asr/1"
 BRANCH = "asr"
 ADAPTER_ID = "mlx-whisper-transcript"
+BACKEND_ENV = "INSIGHT_ASR_BACKEND"
+MLX_BACKEND = "mlx-whisper"
+TORCH_BACKEND = "transformers"
+ASR_BACKENDS = (MLX_BACKEND, TORCH_BACKEND)
+ADAPTER_IDS = {
+    MLX_BACKEND: ADAPTER_ID,
+    TORCH_BACKEND: "transformers-whisper-transcript",
+}
+BACKEND_MODULES = {MLX_BACKEND: "mlx_whisper", TORCH_BACKEND: "transformers"}
+# What an operator would type to install it, which is not always the import name.
+BACKEND_PACKAGES = {MLX_BACKEND: "mlx-whisper", TORCH_BACKEND: "transformers"}
 EVIDENCE_KIND = "measured-speech-transcript"
 # The decode contract is the measured-audio one, deliberately: one clip decodes
 # once, the same way, for every branch that needs PCM.
 PREPROCESSING_ID = "ffmpeg-f32le-mono-16khz/1"
 DEFAULT_MODEL_ID = "mlx-community/whisper-large-v3-turbo"
+# The torch runtime cannot load MLX-quantised weights, so the portable backend
+# names the upstream repository instead. Neither default is usable until the
+# operator pins a revision: an unpinned lane stays unavailable by design.
+DEFAULT_TORCH_MODEL_ID = "openai/whisper-large-v3-turbo"
+DEFAULT_MODEL_IDS = {
+    MLX_BACKEND: DEFAULT_MODEL_ID,
+    TORCH_BACKEND: DEFAULT_TORCH_MODEL_ID,
+}
 
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -106,6 +133,83 @@ class MlxWhisperTranscriber:
             word_timestamps=False,
             condition_on_previous_text=False,
         )
+
+
+@dataclass(slots=True)
+class TransformersWhisperTranscriber:
+    """Whisper through torch, pinned to an immutable revision.
+
+    Returns the same `{language, segments}` shape the MLX runtime does, so the
+    branch's validator and output schema are shared rather than duplicated. The
+    pipeline's final chunk can carry an open-ended timestamp; that is closed
+    against the clip duration here, because a `None` end is a decoding detail
+    and not something the evidence schema should learn about.
+    """
+
+    model_id: str
+    revision: str
+    device: str = "auto"
+    dtype: str = "auto"
+    snapshot_resolver: Callable[[str, str], str] = _resolve_pinned_snapshot
+    pipeline_factory: Callable[..., Any] | None = None
+    runtime: Any = None
+
+    def transcribe(self, samples: np.ndarray) -> Mapping[str, Any]:
+        snapshot = self.snapshot_resolver(self.model_id, self.revision)
+        recognise = self.pipeline_factory or self._build_pipeline
+        pipe = recognise(snapshot)
+        audio = samples.astype(np.float32, copy=False)
+        raw = pipe(
+            {"raw": audio, "sampling_rate": SAMPLE_RATE},
+            return_timestamps=True,
+            chunk_length_s=30,
+        )
+        return self._normalised(raw, duration=len(audio) / float(SAMPLE_RATE))
+
+    def _build_pipeline(self, snapshot: str) -> Any:
+        from transformers import pipeline
+
+        from .torch_runtime import resolve_runtime, torch_dtype
+
+        import torch
+
+        runtime = resolve_runtime(
+            requested_device=self.device, requested_dtype=self.dtype, torch_module=torch
+        )
+        self.runtime = runtime
+        return pipeline(
+            "automatic-speech-recognition",
+            model=snapshot,
+            device=runtime.device,
+            torch_dtype=torch_dtype(torch, runtime.dtype),
+        )
+
+    @staticmethod
+    def _normalised(raw: Any, *, duration: float) -> Mapping[str, Any]:
+        if not isinstance(raw, Mapping):
+            raise AsrUnavailable("The transcriber returned no transcript object.")
+        chunks = raw.get("chunks")
+        if not isinstance(chunks, (list, tuple)):
+            raise AsrUnavailable("The transcriber returned no segment list.")
+        segments: list[dict[str, Any]] = []
+        language: str | None = None
+        for chunk in chunks:
+            if not isinstance(chunk, Mapping):
+                raise AsrUnavailable("The transcriber returned a malformed segment.")
+            stamp = chunk.get("timestamp")
+            if not isinstance(stamp, (list, tuple)) or len(stamp) != 2:
+                raise AsrUnavailable("The transcriber returned a malformed segment time.")
+            start, end = stamp
+            if start is None:
+                raise AsrUnavailable("The transcriber returned a segment with no start.")
+            # An open final chunk closes at the clip's end, never past it.
+            end = duration if end is None else end
+            if isinstance(chunk.get("language"), str) and language is None:
+                language = chunk["language"]
+            segments.append(
+                {"start": float(start), "end": float(end), "text": chunk.get("text")}
+            )
+        return {"language": language, "segments": segments}
 
 
 def _validated_transcript(
@@ -187,6 +291,9 @@ class AsrOutput:
     model_id: str
     model_revision: str
     evidence_kind: str = EVIDENCE_KIND
+    adapter_id: str = ADAPTER_ID
+    backend: str = MLX_BACKEND
+    runtime: Mapping[str, Any] | None = None
 
     def public_value(self) -> dict[str, Any]:
         return {
@@ -209,12 +316,13 @@ class AsrOutput:
             ],
             "warnings": list(self.warnings),
             "provenance": {
-                "adapterId": ADAPTER_ID,
+                "adapterId": self.adapter_id,
                 "preprocessingId": PREPROCESSING_ID,
                 "sampleRateHz": SAMPLE_RATE,
                 "modelId": self.model_id,
                 "modelRevision": self.model_revision,
                 "usesLearnedModel": True,
+                **(dict(self.runtime) if self.runtime else {}),
             },
             "behavioralOutcome": False,
         }
@@ -254,7 +362,16 @@ class AsrWhisperAdapter:
         binary: str = "ffmpeg",
         probe_binary: str = "ffprobe",
         module_probe: Callable[[str], bool] | None = None,
+        snapshot_resolver: Callable[[str, str], str] | None = None,
+        backend: str = MLX_BACKEND,
+        device: str = "auto",
+        dtype: str = "auto",
     ) -> None:
+        if backend not in ASR_BACKENDS:
+            raise ValueError(f"{BACKEND_ENV} must be one of {list(ASR_BACKENDS)}")
+        self.backend = backend
+        self.device = device
+        self.dtype = dtype
         self.model_id = model_id
         self.model_revision = model_revision
         self.transcriber = transcriber
@@ -262,11 +379,17 @@ class AsrWhisperAdapter:
         self.binary = binary
         self.probe_binary = probe_binary
         self._module_probe = module_probe or _module_available
+        self._snapshot_resolver = snapshot_resolver or _resolve_pinned_snapshot
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] | None = None) -> "AsrWhisperAdapter":
         source = os.environ if environ is None else environ
-        model_id = str(source.get("INSIGHT_ASR_MODEL", DEFAULT_MODEL_ID)).strip() or DEFAULT_MODEL_ID
+        backend = str(source.get(BACKEND_ENV, MLX_BACKEND)).strip().lower() or MLX_BACKEND
+        if backend not in ASR_BACKENDS:
+            raise ValueError(f"{BACKEND_ENV} must be one of {list(ASR_BACKENDS)}")
+        default_model = DEFAULT_MODEL_IDS[backend]
+        model_id = str(source.get("INSIGHT_ASR_MODEL", default_model)).strip() or default_model
+        device, dtype = runtime_request_from_env(source)
         revision = str(source.get("INSIGHT_ASR_MODEL_REVISION", "")).strip().lower()
         binary = str(source.get("FORECAST_AUDIO_FFMPEG_BINARY", "ffmpeg")).strip() or "ffmpeg"
         probe_binary = str(source.get("FORECAST_AUDIO_FFPROBE_BINARY", "ffprobe")).strip() or "ffprobe"
@@ -275,6 +398,9 @@ class AsrWhisperAdapter:
             model_revision=revision,
             binary=binary,
             probe_binary=probe_binary,
+            backend=backend,
+            device=device,
+            dtype=dtype,
         )
 
     @property
@@ -283,7 +409,7 @@ class AsrWhisperAdapter:
 
     def availability(self) -> dict[str, Any]:
         provenance = {
-            "adapterId": ADAPTER_ID,
+            "adapterId": ADAPTER_IDS[self.backend],
             "preprocessingId": PREPROCESSING_ID,
             "sampleRateHz": SAMPLE_RATE,
             "modelId": self.model_id,
@@ -306,13 +432,45 @@ class AsrWhisperAdapter:
                 ),
                 **common,
             }
-        if self.transcriber is None and not self._module_probe("mlx_whisper"):
-            return {
-                "configured": True,
-                "executionAvailable": False,
-                "reason": "mlx-whisper is not installed in this backend environment.",
-                **common,
-            }
+        if self.transcriber is None:
+            module = BACKEND_MODULES[self.backend]
+            if not self._module_probe(module):
+                return {
+                    "configured": True,
+                    "executionAvailable": False,
+                    "reason": (
+                        f"{BACKEND_PACKAGES[self.backend]} is not installed in this "
+                        f"backend environment."
+                    ),
+                    **common,
+                }
+            if self.backend == TORCH_BACKEND:
+                blocked = unavailable_reason(
+                    requested_device=self.device, requested_dtype=self.dtype
+                )
+                if blocked:
+                    return {
+                        "configured": True,
+                        "executionAvailable": False,
+                        "reason": blocked,
+                        **common,
+                    }
+                # Resolve the pin from the local cache, as the other portable
+                # lanes do. Without this the status reads ready and the branch
+                # then fails mid-job, which is a worse way to learn the same
+                # thing. This reads the cache only; it never downloads.
+                try:
+                    self._snapshot_resolver(self.model_id, self.model_revision)
+                except Exception:
+                    return {
+                        "configured": True,
+                        "executionAvailable": False,
+                        "reason": (
+                            "The pinned transcript revision is not present in the "
+                            "local snapshot cache. Fetch it once before running."
+                        ),
+                        **common,
+                    }
         decoder_ready = not isinstance(self.decoder, FfmpegPcmDecoder) or (
             shutil.which(self.binary) is not None and shutil.which(self.probe_binary) is not None
         )
@@ -355,9 +513,7 @@ class AsrWhisperAdapter:
         if not isinstance(samples, np.ndarray) or samples.ndim != 1:
             raise AsrUnavailable("The PCM decoder returned an invalid signal.")
         samples = samples[: math.ceil(float(duration_seconds) * SAMPLE_RATE)]
-        transcriber = self.transcriber or MlxWhisperTranscriber(
-            model_id=self.model_id, revision=self.model_revision
-        )
+        transcriber = self.transcriber or self._build_transcriber()
         try:
             raw = transcriber.transcribe(samples)
         except AsrUnavailable:
@@ -367,6 +523,7 @@ class AsrWhisperAdapter:
                 f"The pinned transcript model failed: {type(exc).__name__}"
             ) from exc
         language, observations = _validated_transcript(raw, float(duration_seconds))
+        runtime = getattr(transcriber, "runtime", None)
         return AsrOutput(
             input_sha256=input_sha256,
             started_at=started_at,
@@ -376,6 +533,21 @@ class AsrWhisperAdapter:
             warnings=(WARNING,),
             model_id=self.model_id,
             model_revision=self.model_revision,
+            adapter_id=ADAPTER_IDS[self.backend],
+            backend=self.backend,
+            runtime=runtime.provenance() if runtime is not None else None,
+        )
+
+    def _build_transcriber(self) -> Transcriber:
+        if self.backend == TORCH_BACKEND:
+            return TransformersWhisperTranscriber(
+                model_id=self.model_id,
+                revision=self.model_revision,
+                device=self.device,
+                dtype=self.dtype,
+            )
+        return MlxWhisperTranscriber(
+            model_id=self.model_id, revision=self.model_revision
         )
 
 
