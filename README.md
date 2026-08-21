@@ -269,6 +269,8 @@ jobs, model workers, result caching, and fail-closed calibrated heads.
   cannot support
 - [Insight lane](docs/INSIGHT_LAYER.md) — the evidence bundle, the citation
   grammar, and the three enforcement layers
+- [Run on Colab](colab/SignalFrame_Colab.ipynb) — a Gradio interface with a
+  public URL, and an honest account of which lanes cannot run there
 - [Architecture and capabilities (PDF)](docs/SignalFrame-Architecture-and-Capabilities.pdf)
   — the complete inventory, what the system will not do, and how creators and
   agencies use it
