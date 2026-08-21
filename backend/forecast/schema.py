@@ -49,6 +49,12 @@ BRANCH_DEFINITIONS: dict[str, dict[str, str]] = {
         "evidenceKind": "measured-speech-transcript",
         "missingReason": "No pinned mlx-whisper revision is configured for the transcript branch.",
     },
+    "ocr": {
+        "label": "On-screen text",
+        "role": "optional-measured-on-screen-text",
+        "evidenceKind": "measured-on-screen-text",
+        "missingReason": "No text-recognition engine is available for the on-screen-text branch.",
+    },
     "account": {
         "label": "Account-history context",
         "role": "optional-distribution-context",
@@ -387,6 +393,7 @@ def build_capabilities(
             "measuredAudio", registry, runtime_branches.get("measuredAudio")
         ),
         "asr": _registered_branch("asr", registry, runtime_branches.get("asr")),
+        "ocr": _registered_branch("ocr", registry, runtime_branches.get("ocr")),
         "tribeCortical": _tribe_branch(tribe_runtime_status),
     }
     calibration_heads = {

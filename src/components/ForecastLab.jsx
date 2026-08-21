@@ -76,6 +76,12 @@ const CAPABILITY_SPECS = Object.freeze([
     fallback: "The pinned transcript model is not installed. When available it records spoken words and timings only, never speaker identity or sentiment.",
   },
   {
+    key: "ocr",
+    aliases: ["screenText", "onScreenText"],
+    label: "On-screen text",
+    fallback: "No text-recognition engine is available. When one is, it records glyphs and their positions on the six sampled keyframes, never their meaning.",
+  },
+  {
     key: "account",
     aliases: ["accountContext"],
     label: "Account context",
@@ -277,6 +283,46 @@ function TranscriptSection({ result }) {
         ))}
       </ol>
       <small>Spoken words and timings only. No speaker identity, no sentiment, no audience claim.</small>
+    </div>
+  );
+}
+
+function ScreenTextSection({ result }) {
+  const provider = result?.evidence?.optionalProviders?.ocr;
+  if (!provider) return null;
+  if (provider.status !== "available") {
+    return (
+      <div className="forecast-transcript forecast-transcript--unavailable">
+        <strong>ON-SCREEN TEXT</strong>
+        <p>{provider.reason || "The on-screen-text branch published no evidence for this result."}</p>
+      </div>
+    );
+  }
+  const engine = provider.result?.provenance?.engine;
+  const frames = (provider.result?.observations || [])
+    .filter((item) => item?.kind === "ocr-frame-text-blocks")
+    .map((item, index) => {
+      let blocks = [];
+      try {
+        blocks = JSON.parse(item.text);
+      } catch {
+        blocks = [];
+      }
+      return { index, startTime: item.startTime, blocks: Array.isArray(blocks) ? blocks : [] };
+    });
+  if (!frames.length) return null;
+  return (
+    <div className="forecast-transcript">
+      <strong>ON-SCREEN TEXT{engine ? ` · ${engine.toUpperCase()}` : ""}</strong>
+      <ol>
+        {frames.map((frame) => (
+          <li key={frame.index}>
+            <code>{formatSeconds(frame.startTime)}</code>
+            <span>{frame.blocks.length ? frame.blocks.map((block) => block.text).join(" · ") : "No text recognized on this keyframe"}</span>
+          </li>
+        ))}
+      </ol>
+      <small>Recognized glyphs and their positions on the six sampled keyframes. Recognition varies by engine and operating-system version, and this is not an understanding of what the text means.</small>
     </div>
   );
 }
@@ -746,6 +792,7 @@ export function ForecastLab({
           </div>
           <div className="forecast-truth-note"><WarningCircle size={15} weight="fill" /><span>TRIBE is kept separate with <code>forecastContribution:false</code>. Local substitutes are descriptive and never relabeled as V-JEPA, VideoLLaMA, audio semantics, trends or competitors.</span></div>
           <TranscriptSection result={forecastJobState?.result} />
+          <ScreenTextSection result={forecastJobState?.result} />
           <InsightPanel
             forecastResultId={forecastJobState?.result?.resultId ?? null}
             tribeResultId={tribeDescriptors?.source?.resultId ?? null}

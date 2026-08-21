@@ -33,6 +33,12 @@ and terms.
   conversion, its dependencies, and its weights may carry distinct notices.
   Review the exact model card and included license files before use. No
   transcript model is bundled in this repository.
+- **Text recognition engines** — the optional on-screen-text branch calls
+  either `ocrmac` (**MIT**), a Python wrapper around Apple's Vision framework,
+  or `pytesseract` (**Apache-2.0**) with the separately installed Tesseract OCR
+  engine (**Apache-2.0**). Apple's Vision framework is part of macOS and is
+  governed by the macOS software license agreement, not by SignalFrame's MIT
+  License. Neither engine nor any recognition model is bundled here.
 
 No model weights, creator uploads, generated cortical tensors, or local model
 caches are intended to be committed to this repository.

@@ -14,7 +14,7 @@ const CORE_OPTIONAL_PROVIDER_KEYS = Object.freeze([
   "trends",
   "competitors",
 ]);
-const LOCAL_OPTIONAL_PROVIDER_KEYS = Object.freeze(["semanticModel", "measuredAudio", "asr"]);
+const LOCAL_OPTIONAL_PROVIDER_KEYS = Object.freeze(["semanticModel", "measuredAudio", "asr", "ocr"]);
 const OPTIONAL_PROVIDER_KEYS = Object.freeze([...CORE_OPTIONAL_PROVIDER_KEYS, ...LOCAL_OPTIONAL_PROVIDER_KEYS]);
 const BEHAVIORAL_HEAD_KEYS = Object.freeze([
   "hookStrength",
@@ -46,6 +46,7 @@ const FEATURE_PREFIXES = Object.freeze({
   semanticModel: "nanollava.",
   measuredAudio: "measured_audio.",
   asr: "asr.",
+  ocr: "ocr.",
 });
 const EVIDENCE_KINDS = Object.freeze({
   vjepa21: new Set(["learned-visual-representation"]),
@@ -54,6 +55,7 @@ const EVIDENCE_KINDS = Object.freeze({
   semanticModel: new Set(["learned-keyframe-semantics"]),
   measuredAudio: new Set(["measured-audio-descriptors"]),
   asr: new Set(["measured-speech-transcript"]),
+  ocr: new Set(["measured-on-screen-text"]),
 });
 const FORBIDDEN_FEATURE_FRAGMENTS = ["tribe", "bold", "brain", "cortex", "cortical", "parcel", "virality", "retention", "completion", "rewatch"];
 
@@ -156,9 +158,11 @@ function validateWorkerResult(value, branch, inputSha256) {
   ], `${branch} worker result`);
   const measuredAudio = branch === "measuredAudio";
   const transcript = branch === "asr";
+  const screenText = branch === "ocr";
   const expectedSchema = measuredAudio
     ? "creator-forecast-measured-audio/1"
-    : transcript ? "creator-forecast-asr/1" : "creator-forecast-worker-output/1";
+    : transcript ? "creator-forecast-asr/1"
+      : screenText ? "creator-forecast-ocr/1" : "creator-forecast-worker-output/1";
   if (value.schemaVersion !== expectedSchema || value.branch !== branch || value.inputSha256 !== inputSha256 || value.behavioralOutcome !== false) {
     throw new Error(`${branch} worker result identity is invalid.`);
   }
@@ -202,6 +206,12 @@ function validateWorkerResult(value, branch, inputSha256) {
     integer(provenance.sampleRateHz, `${branch} provenance sampleRateHz`, { minimum: 1 });
     if (!COMMIT.test(provenance.modelRevision)) throw new Error(`${branch} transcript model revision is not immutable.`);
     if (provenance.usesLearnedModel !== true) throw new Error(`${branch} provenance misdescribes its learned transcript model.`);
+  } else if (screenText) {
+    exactKeys(provenance, ["adapterId", "preprocessingId", "engine", "macOSVersion", "usesLearnedModel"], `${branch} provenance`);
+    for (const key of ["adapterId", "preprocessingId", "engine"]) text(provenance[key], `${branch} provenance ${key}`, { maximum: 256 });
+    if (!["ocrmac", "pytesseract"].includes(provenance.engine)) throw new Error(`${branch} recorded an unknown recognition engine.`);
+    if (provenance.macOSVersion !== null) text(provenance.macOSVersion, `${branch} provenance macOSVersion`, { maximum: 64 });
+    if (provenance.usesLearnedModel !== true) throw new Error(`${branch} provenance misdescribes its recognition engine.`);
   } else {
     exactKeys(provenance, [
       "branch", "modelId", "modelRevision", "modelWeightsSha256", "adapterId",
@@ -227,7 +237,7 @@ function validateProvider(value, branch, inputSha256) {
     text(provider.reason, `${branch} unavailable reason`);
     return provider;
   }
-  if (provider.status !== "available" || !["vjepa21", "videoLlama21Av", "audioModel", "semanticModel", "measuredAudio", "asr"].includes(branch)) {
+  if (provider.status !== "available" || !["vjepa21", "videoLlama21Av", "audioModel", "semanticModel", "measuredAudio", "asr", "ocr"].includes(branch)) {
     throw new Error(`${branch} provider reported an unsupported availability state.`);
   }
   keysWithOptional(provider, ["status", "configured", "forecastContribution", "behavioralOutcome", "evidenceKind", "result"], ["provider"], `${branch} provider`);

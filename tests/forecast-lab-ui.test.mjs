@@ -44,6 +44,7 @@ function capabilityFixture() {
       currentlyReady: true,
     },
     asr: branch("not-configured"),
+    ocr: branch("not-configured"),
     account: branch("not-configured"),
     trends: branch("not-configured"),
     competitors: branch("not-configured"),

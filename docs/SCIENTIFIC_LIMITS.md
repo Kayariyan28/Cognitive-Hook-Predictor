@@ -16,6 +16,7 @@ claim.
 | AST evidence | AudioSet classifier over decoded windows | Candidate sound-event labels | Transcript, music appeal, sentiment, quality, or audience response |
 | Measured audio | PCM and STFT calculations | Signal facts such as energy, silence, centroid, flatness, and flux | Learned semantics or performance predictions |
 | Spoken transcript | Pinned mlx-whisper over the decoded 16 kHz mono track | Which words were spoken and when, when speech is present and recognizable | Speaker identity, sentiment, tone, meaning, delivery quality, or audience response |
+| On-screen text | Apple Vision or Tesseract over the six sampled 384 px keyframes | Which glyphs were recognized on those six frames, and roughly where | Text between the sampled frames, reading order, emphasis, meaning, or whether anyone read it |
 | Insight lane | A pinned language model over validated evidence, checked by a deterministic validator | Descriptive restatement of cited evidence and untested editing hypotheses | Any outcome, any mental state, any number the evidence does not contain |
 | Behavioral head | Separately approved and calibrated target model | Its exact declared platform/population/horizon probability | Any other outcome, platform, population, or time horizon |
 | TRIBE v2 tensor | Released average-subject brain-response model | Model-predicted cortical BOLD on `fsaverage5` | Measured viewer activity, an individual brain, attention, emotion, memory, engagement, or virality |
@@ -102,6 +103,19 @@ was meant, whether delivery was good, or how an audience will respond. The
 branch records no speaker identity and no sentiment, by contract and by test.
 A missing or unrecognizable speech track leaves the branch unavailable; it is
 never filled in from captions, filenames, or creator-declared context.
+
+## On-screen-text interpretation
+
+Text recognition runs on six deterministically sampled frames, not on the
+whole clip. Text that appears only between those samples is not in the
+evidence, and its absence is not evidence of absence. Apple Vision results
+change with the operating-system version, so the branch records the engine and
+the macOS version it ran under; a result produced under one version is not
+strictly comparable to one produced under another.
+
+The branch reports glyphs, confidences, and bounding boxes. It does not report
+what the text means, which text a viewer would read first, whether the wording
+is effective, or whether anyone read it at all.
 
 ## Frame and interval interpretation
 

@@ -57,6 +57,7 @@ model-target BOLD values—not attention, engagement, emotion, or virality.*
 | Keyframe semantics | Pinned NanoLLaVA MLX fallback over six source frames | Still-frame descriptions; not VideoLLaMA and not continuous-video understanding |
 | Audio evidence | Pinned AST AudioSet labels plus measured PCM/STFT descriptors | Sound-label and signal evidence; not a transcript or audience model |
 | Spoken transcript | Optional pinned mlx-whisper branch over the same 16 kHz mono decode | Words and timings only; no speaker identity, no sentiment, no audience claim |
+| On-screen text | Optional Apple Vision (`ocrmac`) or `pytesseract` over the same six keyframes | Recognized glyphs and their positions; not meaning, emphasis, or reader behavior |
 | 3D cortical map | Genuine TRIBE v2 `T x 20,484` `fsaverage5` tensor only | Predicted average-subject BOLD; never colored by local content scores |
 | Creator report | Tensor-derived time, continuity, magnitude, change, and Destrieux parcel summaries | Descriptive neural-model output; not emotion, memory, or engagement |
 | Behavioral forecast heads | Fail-closed production-calibration registry | Values stay withheld until an approved head is installed |

@@ -27,6 +27,7 @@ from .workers.ast_audio import AstAudioAdapter
 from .workers.local_vjepa21 import LocalVJepa21Adapter
 from .workers.measured_audio import MeasuredAudioAdapter
 from .workers.nanollava import NanoLlavaSemanticAdapter
+from .workers.ocr_screen_text import OcrScreenTextAdapter
 
 
 LOGGER = logging.getLogger("forecast_orchestrator")
@@ -37,6 +38,7 @@ MODEL_PROVIDER_KEYS = (
     "semanticModel",
     "measuredAudio",
     "asr",
+    "ocr",
 )
 FEATURE_PREFIXES = {
     "vjepa21": "vjepa2_1.",
@@ -45,6 +47,7 @@ FEATURE_PREFIXES = {
     "semanticModel": "nanollava.",
     "measuredAudio": "measured_audio.",
     "asr": "asr.",
+    "ocr": "ocr.",
 }
 FORECAST_FEATURE_SOURCES = {
     "videoMetadata",
@@ -54,6 +57,7 @@ FORECAST_FEATURE_SOURCES = {
     "semanticModel",
     "measuredAudio",
     "asr",
+    "ocr",
     "account",
     "trends",
     "competitors",
@@ -241,6 +245,7 @@ class MultimodalEvidenceOrchestrator:
         adapters["semanticModel"] = NanoLlavaSemanticAdapter.from_env(source)
         adapters["measuredAudio"] = MeasuredAudioAdapter.from_env(source)
         adapters["asr"] = AsrWhisperAdapter.from_env(source)
+        adapters["ocr"] = OcrScreenTextAdapter.from_env(source)
         return cls(adapters, CalibratedHeadRuntime.from_registry(model_registry))
 
     def run(

@@ -29,6 +29,7 @@ FORECAST_RUNTIME_BRANCH_KEYS = (
     "semanticModel",
     "measuredAudio",
     "asr",
+    "ocr",
 )
 PUBLIC_ADAPTER_STATUS_KEYS = frozenset(
     {
