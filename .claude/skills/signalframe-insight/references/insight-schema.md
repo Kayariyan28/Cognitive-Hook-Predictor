@@ -40,7 +40,7 @@ A present lane always has `"status": "present"`.
 
 | Lane | Source in the forecast/TRIBE result | Present shape |
 | --- | --- | --- |
-| `measured` | `evidence.videoMetadata` + `evidence.optionalProviders.measuredAudio` | `{status, video:{durationSeconds,sizeBytes,contentType,sha256}, audio:{status, descriptors:{…}, energyPeaks:[{index,startSec,endSec,text}]}}` |
+| `measured` | `evidence.videoMetadata` + `evidence.optionalProviders.measuredAudio` | `{status, video:{durationSeconds,sizeBytes,contentType}, audio:{status, descriptors:{…}, energyPeaks:[{index,startSec,endSec,text}]}}` |
 | `nanollava` | `evidence.optionalProviders.semanticModel` | `{status, keyframes:[{index,startSec,endSec,text,parsed}], warnings:[…]}` |
 | `ast` | `evidence.optionalProviders.audioModel` | `{status, windows:[{index,startSec,endSec,labels:[{label,modelScore}]}], descriptors:{…}}` |
 | `vjepa` | `evidence.optionalProviders.vjepa21` | `{status, windows:[{index,startSec,endSec,text,labels:[…]}], descriptors:{…}}` |
@@ -62,6 +62,9 @@ A present lane always has `"status": "present"`.
   `startSec`/`endSec` with identical values.
 - **NanoLLaVA observation text is kept verbatim in `text`.** `parsed` holds the decoded
   object when `text` is a JSON object, otherwise `null`.
+- **The source-video content hash never enters the bundle.** It is a fingerprint of
+  creator media, it is not citable evidence, and the remote-provider payload is built
+  from this bundle.
 - **The TRIBE tensor never enters the bundle.** Only interval series
   (`{index,startSec,durationSec,magnitude,continuity,changeRate,spatialDistribution}` copied
   from descriptor `frames[]`), the `phases[]` summaries, and at most **8** parcel summaries.

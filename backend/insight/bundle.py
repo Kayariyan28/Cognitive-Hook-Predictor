@@ -192,13 +192,15 @@ def _measured_lane(result: Mapping[str, Any]) -> dict[str, Any]:
         return absent_lane(
             "the forecast result published no authoritative server media metadata"
         )
+    # The source-video content hash is deliberately excluded: it is a
+    # fingerprint of creator media, it is never citable evidence, and the
+    # remote provider payload is built from this bundle.
     video = {
         "durationSeconds": _finite_number(metadata.get("durationSeconds")),
         "sizeBytes": _finite_number(metadata.get("sizeBytes")),
         "contentType": metadata.get("contentType")
         if isinstance(metadata.get("contentType"), str)
         else None,
-        "sha256": metadata.get("sha256") if isinstance(metadata.get("sha256"), str) else None,
     }
     if video["durationSeconds"] is None:
         return absent_lane("the server media probe published no finite duration")

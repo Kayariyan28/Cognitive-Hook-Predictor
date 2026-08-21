@@ -54,6 +54,7 @@ class BundleAssemblyTests(unittest.TestCase):
     def test_measured_lane_copies_values_verbatim_and_strips_prefix(self):
         lane = full_bundle()["lanes"]["measured"]
         self.assertEqual(lane["video"]["durationSeconds"], 21.5)
+        self.assertNotIn("sha256", lane["video"])
         self.assertEqual(lane["audio"]["descriptors"]["rms"], 0.1372)
         self.assertEqual(lane["audio"]["descriptors"]["spectral_centroid_hz_mean"], 2418.5)
         self.assertNotIn("measured_audio.rms", lane["audio"]["descriptors"])

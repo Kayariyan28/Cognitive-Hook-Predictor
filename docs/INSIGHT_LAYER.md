@@ -19,8 +19,22 @@ in `backend/insight/` and `src/insight/`.
   citation that does not resolve rejects the whole artifact.
 - A **local lane by default**. The default provider is a pinned local MLX
   model. Sending derived evidence to a remote provider requires the operator to
-  set `INSIGHT_CLOUD_ENABLED=true` and supply a key, and even then the payload
-  is JSON evidence only — never video, audio, frames, or a tensor.
+  set `INSIGHT_CLOUD_ENABLED=true` and supply a key.
+
+### What leaves the machine when the remote provider is enabled
+
+Exactly one thing: the evidence bundle, as JSON, plus the static prompt
+template. Concretely that is the measured audio and video descriptors, the
+keyframe and AudioSet observations, the V-JEPA summary descriptors, the
+transcript and on-screen text when those branches ran, the TRIBE interval and
+parcel summaries, and **the publishing context the creator typed in** —
+caption, topic, locale, and account notes are evidence the Hook Doctor reads.
+
+What never leaves: the video, its audio, its frames, the cortical tensor, any
+file path, and the source video's content hash, which is excluded from the
+bundle precisely because it is a fingerprint of creator media rather than
+citable evidence. Operators who consider their declared context sensitive
+should leave `INSIGHT_CLOUD_ENABLED=false`, which is the default.
 
 ## What it is not
 
