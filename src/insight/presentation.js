@@ -297,3 +297,45 @@ export function presentChecklist(readout) {
       })),
   );
 }
+
+/**
+ * Present a variant comparison. A metric that moved names which cut sits
+ * highest and lowest; a metric that did not move names neither, because there
+ * is nothing to point at.
+ */
+export function presentVariantComparison(comparison) {
+  if (!comparison || typeof comparison !== "object") return null;
+  const variants = Array.isArray(comparison.variants) ? comparison.variants : [];
+  const labels = new Map(variants.map((variant) => [variant.resultId, variant.label]));
+  const metrics = Array.isArray(comparison.metrics) ? comparison.metrics : [];
+  return Object.freeze({
+    variants: Object.freeze([...variants]),
+    behavioralOutcome: false,
+    limits: comparison.limits ?? "",
+    skipped: Object.freeze(
+      (Array.isArray(comparison.skippedMetrics) ? comparison.skippedMetrics : []).map(
+        (entry) => Object.freeze({ ...entry }),
+      ),
+    ),
+    metrics: Object.freeze(
+      metrics.map((metric) =>
+        Object.freeze({
+          metricPath: metric.metricPath,
+          spread: metric.spread,
+          differs: metric.differs === true,
+          values: Object.freeze(
+            (Array.isArray(metric.values) ? metric.values : []).map((entry) =>
+              Object.freeze({
+                ...entry,
+                isLowest: metric.differs === true && entry.resultId === metric.lowestResultId,
+                isHighest: metric.differs === true && entry.resultId === metric.highestResultId,
+              }),
+            ),
+          ),
+          lowestLabel: metric.differs ? labels.get(metric.lowestResultId) ?? null : null,
+          highestLabel: metric.differs ? labels.get(metric.highestResultId) ?? null : null,
+        }),
+      ),
+    ),
+  });
+}

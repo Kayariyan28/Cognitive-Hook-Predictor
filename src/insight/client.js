@@ -228,3 +228,79 @@ export async function listExperiments({ signal, baseUrl } = {}) {
   const experiments = Array.isArray(payload?.experiments) ? payload.experiments : [];
   return Object.freeze(experiments);
 }
+
+/** Compare several analysed cuts of the same idea. No model is involved. */
+export async function compareVariants(resultIds, labels = {}, { signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/variants`, {
+    method: "POST",
+    signal,
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ resultIds, labels }),
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  if (payload?.unavailable === true) {
+    return Object.freeze({ status: "unavailable", document: payload });
+  }
+  return Object.freeze({ status: "available", comparison: payload });
+}
+
+/** Which mechanical recuts this service can render, if any. */
+export async function fetchRecutOperations({ signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/recut/operations`, {
+    signal,
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  return payload;
+}
+
+/**
+ * Render one mechanical recut. The service keeps nothing: the clip comes back
+ * as a Blob that the creator submits as an ordinary new evidence job.
+ */
+export async function renderRecut(
+  file,
+  { operation, durationSeconds, seconds = null, startSec = null, endSec = null },
+  { signal, baseUrl } = {},
+) {
+  const config = configuration(baseUrl);
+  if (!(file instanceof File)) {
+    throw new InsightClientError("Choose the clip you want to recut.", {
+      code: "video_required",
+    });
+  }
+  const body = new FormData();
+  body.append("video", file, file.name);
+  body.append("operation", operation);
+  body.append("durationSeconds", String(durationSeconds));
+  if (seconds !== null) body.append("seconds", String(seconds));
+  if (startSec !== null) body.append("startSec", String(startSec));
+  if (endSec !== null) body.append("endSec", String(endSec));
+
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/recut`, {
+    method: "POST",
+    signal,
+    cache: "no-store",
+    body,
+  });
+  if (!response.ok) {
+    const payload = await readJson(response);
+    if (payload?.unavailable === true) {
+      return Object.freeze({ status: "unavailable", document: payload });
+    }
+    throw callerError(payload, response.status);
+  }
+  let plan = null;
+  try {
+    plan = JSON.parse(response.headers?.get?.("X-Recut-Plan") ?? "null");
+  } catch {
+    plan = null;
+  }
+  return Object.freeze({ status: "available", blob: await response.blob(), plan });
+}

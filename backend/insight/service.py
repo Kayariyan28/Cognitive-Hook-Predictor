@@ -22,6 +22,7 @@ from .bundle import (
 from .comparative import build_comparative, corpus_from_results, extract_metric_values
 from .config import InsightSettings
 from .hook_readout import build_hook_readout
+from .variants import VariantComparisonError, build_variant_comparison, variants_from_results
 from .prompts.hook_doctor import PROMPT_TEMPLATE_ID, prompt_hash
 from .provenance import LIMITS_STATEMENT, build_provenance, cache_key
 from .providers import (
@@ -210,6 +211,24 @@ class InsightService:
         except BundleUnavailableError as exc:
             return self._unavailable("bundle_unavailable", str(exc))
         return build_hook_readout(bundle)
+
+    def compare_variants(
+        self, result_ids: Sequence[str], labels: Mapping[str, str] | None = None
+    ) -> dict[str, Any]:
+        """Lay several analysed cuts of the same idea out side by side."""
+
+        results = []
+        for result_id in result_ids:
+            result = self._load_forecast_result(result_id)
+            if result is None:
+                raise VariantComparisonError(
+                    "bundle_unavailable", f"forecast result {result_id} was not found"
+                )
+            results.append(result)
+        variants = variants_from_results(
+            results, assemble=assemble_evidence_bundle, labels=labels
+        )
+        return build_variant_comparison(variants)
 
     def read_artifact(self, insight_id: str) -> dict[str, Any] | None:
         return self.store.read_artifact(insight_id)

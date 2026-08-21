@@ -475,3 +475,78 @@ test("a threshold is labelled a declared convention, not a calibrated boundary",
   assert.equal(checks[0].isConvention, true);
   assert.equal(checks[2].isConvention, false);
 });
+
+import { presentVariantComparison } from "../src/insight/presentation.js";
+
+function comparisonFixture(overrides = {}) {
+  return {
+    schemaVersion: "insight-variant-comparison/1",
+    variants: [
+      { resultId: "a".repeat(32), label: "Original" },
+      { resultId: "b".repeat(32), label: "Tighter open" },
+    ],
+    metrics: [
+      {
+        metricPath: "measured:/audio/descriptors/silent_window_fraction",
+        values: [
+          { resultId: "a".repeat(32), label: "Original", value: 0.3 },
+          { resultId: "b".repeat(32), label: "Tighter open", value: 0.12 },
+        ],
+        spread: 0.18,
+        differs: true,
+        lowestResultId: "b".repeat(32),
+        highestResultId: "a".repeat(32),
+      },
+      {
+        metricPath: "measured:/audio/descriptors/rms",
+        values: [
+          { resultId: "a".repeat(32), label: "Original", value: 0.1372 },
+          { resultId: "b".repeat(32), label: "Tighter open", value: 0.1372 },
+        ],
+        spread: 0,
+        differs: false,
+        lowestResultId: null,
+        highestResultId: null,
+      },
+    ],
+    skippedMetrics: [
+      { metricPath: "vjepa:/descriptors/temporal_change_mean", reason: "measured on 1 of 2 cuts" },
+    ],
+    differingMetricCount: 1,
+    behavioralOutcome: false,
+    limits: "Higher is not better and lower is not worse.",
+    ...overrides,
+  };
+}
+
+test("a variant comparison marks which cut sits highest and lowest", () => {
+  const presented = presentVariantComparison(comparisonFixture());
+  const silence = presented.metrics[0];
+  assert.equal(silence.differs, true);
+  assert.equal(silence.lowestLabel, "Tighter open");
+  assert.equal(silence.highestLabel, "Original");
+  assert.equal(silence.values.find((entry) => entry.isLowest).value, 0.12);
+});
+
+test("a signal that did not move names neither cut", () => {
+  const presented = presentVariantComparison(comparisonFixture());
+  const rms = presented.metrics[1];
+  assert.equal(rms.differs, false);
+  assert.equal(rms.lowestLabel, null);
+  assert.equal(rms.highestLabel, null);
+  assert.equal(rms.values.some((entry) => entry.isLowest || entry.isHighest), false);
+});
+
+test("a metric measured on only some cuts is reported as skipped, not compared", () => {
+  const presented = presentVariantComparison(comparisonFixture());
+  assert.equal(presented.metrics.length, 2);
+  assert.equal(presented.skipped.length, 1);
+  assert.match(presented.skipped[0].reason, /1 of 2/);
+});
+
+test("a variant comparison never claims an outcome", () => {
+  const presented = presentVariantComparison(comparisonFixture());
+  assert.equal(presented.behavioralOutcome, false);
+  assert.match(presented.limits, /not better/);
+  assert.equal(presentVariantComparison(null), null);
+});

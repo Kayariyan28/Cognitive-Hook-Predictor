@@ -9,14 +9,23 @@ an otherwise successful result.
 
 from __future__ import annotations
 
+import json
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Any, Mapping
 
-from fastapi import APIRouter, Body, HTTPException, Request
+from starlette.background import BackgroundTask
+
+from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
 
 from .config import InsightSettings
 from .experiments import ExperimentError, ExperimentRequest, ExperimentTracker
 from .outcomes import OutcomeImportError, OutcomeLedger
+from .recut import OPERATIONS, RecutAssistant, RecutError
+from .variants import VariantComparisonError
 from .service import InsightRequest, InsightService
 from .store import InsightStoreError
 
@@ -28,6 +37,7 @@ PRIVATE_NO_STORE_HEADERS = {
 }
 
 RESULT_ID_LENGTH = 32
+MAXIMUM_RECUT_BYTES = 256 * 1024 * 1024
 
 
 def _http_error(status_code: int, code: str, message: str) -> HTTPException:
@@ -84,6 +94,7 @@ def create_insight_router(
     forecast_result_loader: Any = None,
     tracker: ExperimentTracker | None = None,
     outcome_ledger: OutcomeLedger | None = None,
+    recut_assistant: RecutAssistant | None = None,
 ) -> APIRouter:
     active_settings = settings or InsightSettings.from_env()
     active_service = service or InsightService(
@@ -94,7 +105,55 @@ def create_insight_router(
         forecast_result_loader=active_service.forecast_result_loader,
     )
 
+    active_recut = recut_assistant or RecutAssistant()
+
     router = APIRouter(prefix="/api/insight/v1", tags=["creator-insight"])
+
+    @router.post("/variants")
+    def compare_variants(body: dict[str, Any] = Body(...)) -> JSONResponse:
+        """Measured signals across several analysed cuts. No model is consulted."""
+
+        if not isinstance(body, Mapping) or set(body) - {"resultIds", "labels"}:
+            raise _http_error(
+                400, "invalid_request", "the request body accepts resultIds and labels"
+            )
+        raw_ids = body.get("resultIds")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            raise _http_error(400, "invalid_request", "resultIds must be a non-empty array")
+        result_ids = [_result_id(value, "resultIds") for value in raw_ids]
+        raw_labels = body.get("labels")
+        labels: dict[str, str] = {}
+        if raw_labels is not None:
+            if not isinstance(raw_labels, Mapping):
+                raise _http_error(400, "invalid_request", "labels must be a JSON object")
+            for key, value in raw_labels.items():
+                if isinstance(value, str) and value.strip():
+                    labels[_result_id(key, "labels")] = value.strip()[:64]
+        try:
+            comparison = active_service.compare_variants(result_ids, labels)
+        except VariantComparisonError as exc:
+            return JSONResponse(
+                exc.as_dict(), status_code=200, headers=PRIVATE_NO_STORE_HEADERS
+            )
+        return JSONResponse(comparison, headers=PRIVATE_NO_STORE_HEADERS)
+
+    @router.get("/recut/operations")
+    def recut_operations() -> JSONResponse:
+        return JSONResponse(
+            {
+                "schemaVersion": "insight-recut-operations/1",
+                "available": active_recut.available(),
+                "operations": [
+                    {"id": key, "description": value} for key, value in OPERATIONS.items()
+                ],
+                "limits": (
+                    "A recut changes the clip, not any measurement of it. The result is "
+                    "returned to you and must be submitted as a new evidence job before "
+                    "anything can be said about it."
+                ),
+            },
+            headers=PRIVATE_NO_STORE_HEADERS,
+        )
 
     @router.get("/status")
     def insight_status() -> JSONResponse:
@@ -114,6 +173,74 @@ def create_insight_router(
             headers={
                 **PRIVATE_NO_STORE_HEADERS,
                 "X-Insight-Cache": "hit" if cached else "miss",
+            },
+        )
+
+    @router.post("/recut")
+    async def render_recut(
+        video: UploadFile = File(...),
+        operation: str = Form(...),
+        durationSeconds: float = Form(...),
+        seconds: float | None = Form(default=None),
+        startSec: float | None = Form(default=None),
+        endSec: float | None = Form(default=None),
+    ) -> Any:
+        """Render one mechanical recut and hand the clip straight back.
+
+        Nothing is retained: the render lives in a temporary directory that is
+        removed as the response finishes, and the creator submits the result as
+        an ordinary new evidence job.
+        """
+
+        suffix = Path(video.filename or "clip.mp4").suffix.lower()
+        if suffix not in {".mp4", ".mov", ".mkv", ".webm", ".avi"}:
+            raise _http_error(400, "invalid_video", "the clip must be a video file")
+        workspace = Path(tempfile.mkdtemp(prefix="signalframe-recut-"))
+        source = workspace / f"source{suffix}"
+        destination = workspace / f"recut{suffix}"
+        try:
+            size = 0
+            with source.open("wb") as handle:
+                while chunk := await video.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAXIMUM_RECUT_BYTES:
+                        raise _http_error(
+                            413, "invalid_video", "the clip exceeds the recut size limit"
+                        )
+                    handle.write(chunk)
+            if size == 0:
+                raise _http_error(400, "invalid_video", "the uploaded clip is empty")
+            rendered, plan = active_recut.recut(
+                source,
+                destination,
+                operation=operation,
+                duration_seconds=durationSeconds,
+                seconds=seconds,
+                start_seconds=startSec,
+                end_seconds=endSec,
+            )
+        except RecutError as exc:
+            shutil.rmtree(workspace, ignore_errors=True)
+            return JSONResponse(
+                exc.as_dict(), status_code=422, headers=PRIVATE_NO_STORE_HEADERS
+            )
+        except HTTPException:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise
+        except Exception:
+            shutil.rmtree(workspace, ignore_errors=True)
+            raise _http_error(500, "recut_failed", "The recut could not be rendered.")
+        finally:
+            await video.close()
+
+        return FileResponse(
+            rendered,
+            media_type="application/octet-stream",
+            filename=f"recut-{plan.operation}{suffix}",
+            background=BackgroundTask(shutil.rmtree, workspace, ignore_errors=True),
+            headers={
+                **PRIVATE_NO_STORE_HEADERS,
+                "X-Recut-Plan": json.dumps(plan.public_value(), separators=(",", ":")),
             },
         )
 

@@ -149,6 +149,9 @@ conversion, or equals a bound of the requested window. Anything else is
 | Route | Purpose |
 | --- | --- |
 | `GET /api/insight/v1/status` | Provider readiness, pinned model identity and revision, prompt template version, config summary. The API key appears only as a boolean. |
+| `POST /api/insight/v1/variants` | Measured signals across several analysed cuts of the same idea. |
+| `GET /api/insight/v1/recut/operations` | Which mechanical recuts this service can render. |
+| `POST /api/insight/v1/recut` | Render one mechanical recut and hand the clip straight back. |
 | `POST /api/insight/v1/hook-readout` | The deterministic timeline and checklist. Never calls a model, so it works with no provider installed. |
 | `POST /api/insight/v1/generate` | Body `{forecastResultId, tribeResultId?, tribeDescriptors?, hookOnly?}`. Returns an artifact or an explicit unavailable document. |
 | `GET /api/insight/v1/results/{id}` | One published artifact. |
@@ -244,3 +247,30 @@ Three properties matter more than the checks themselves:
    prompt, or judge, and the route's test builds a service whose provider factory
    raises if it is ever called. The insight lane's job is narrowed to explaining
    and proposing; being useful is not conditional on a model being installed.
+
+## Recuts and variants
+
+An experiment proposes an edit, and until the creator can actually make it the
+tracker is a to-do list people abandon. Two routes close that.
+
+`POST /api/insight/v1/recut` performs one **mechanical** edit — trim the start,
+trim the end, or keep a window — and hands the clip straight back. Three things
+are deliberate:
+
+- **The operation is chosen by a person, never by the model.** A model proposes
+  an edit in words; a creator picks one of three code-owned operations.
+- **Nothing is retained.** The render lives in a temporary directory removed as
+  the response finishes. The creator submits the result as an ordinary new
+  evidence job, so job admission, probing, and measurement are unchanged.
+- **A recut measures nothing.** The result has to be analysed as a new clip
+  before anything can be said about it.
+
+`POST /api/insight/v1/variants` then lays two to six analysed cuts side by side
+on the code-owned metric list. For each signal it reports the values, the
+spread, and — only when the values actually differ beyond the shared A/B
+tolerance — which cut sits highest and lowest. A metric measured on some cuts
+but not all is **skipped and named**, because filling that gap would invent the
+number that decides the comparison.
+
+Neither route ranks a cut as better. Higher is not better and lower is not
+worse: no cut in this system has been shown to an audience.
