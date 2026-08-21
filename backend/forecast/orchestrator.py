@@ -22,6 +22,7 @@ from .jobs import (
     StageCallback,
 )
 from .registry import ForecastRegistry
+from .workers.asr_whisper import AsrWhisperAdapter
 from .workers.ast_audio import AstAudioAdapter
 from .workers.local_vjepa21 import LocalVJepa21Adapter
 from .workers.measured_audio import MeasuredAudioAdapter
@@ -35,6 +36,7 @@ MODEL_PROVIDER_KEYS = (
     "audioModel",
     "semanticModel",
     "measuredAudio",
+    "asr",
 )
 FEATURE_PREFIXES = {
     "vjepa21": "vjepa2_1.",
@@ -42,6 +44,7 @@ FEATURE_PREFIXES = {
     "audioModel": "audio.",
     "semanticModel": "nanollava.",
     "measuredAudio": "measured_audio.",
+    "asr": "asr.",
 }
 FORECAST_FEATURE_SOURCES = {
     "videoMetadata",
@@ -50,6 +53,7 @@ FORECAST_FEATURE_SOURCES = {
     "audioModel",
     "semanticModel",
     "measuredAudio",
+    "asr",
     "account",
     "trends",
     "competitors",
@@ -236,6 +240,7 @@ class MultimodalEvidenceOrchestrator:
         # impersonates the optional learned ``audioModel`` branch.
         adapters["semanticModel"] = NanoLlavaSemanticAdapter.from_env(source)
         adapters["measuredAudio"] = MeasuredAudioAdapter.from_env(source)
+        adapters["asr"] = AsrWhisperAdapter.from_env(source)
         return cls(adapters, CalibratedHeadRuntime.from_registry(model_registry))
 
     def run(

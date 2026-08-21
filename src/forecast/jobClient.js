@@ -14,7 +14,7 @@ const CORE_OPTIONAL_PROVIDER_KEYS = Object.freeze([
   "trends",
   "competitors",
 ]);
-const LOCAL_OPTIONAL_PROVIDER_KEYS = Object.freeze(["semanticModel", "measuredAudio"]);
+const LOCAL_OPTIONAL_PROVIDER_KEYS = Object.freeze(["semanticModel", "measuredAudio", "asr"]);
 const OPTIONAL_PROVIDER_KEYS = Object.freeze([...CORE_OPTIONAL_PROVIDER_KEYS, ...LOCAL_OPTIONAL_PROVIDER_KEYS]);
 const BEHAVIORAL_HEAD_KEYS = Object.freeze([
   "hookStrength",
@@ -45,6 +45,7 @@ const FEATURE_PREFIXES = Object.freeze({
   audioModel: "audio.",
   semanticModel: "nanollava.",
   measuredAudio: "measured_audio.",
+  asr: "asr.",
 });
 const EVIDENCE_KINDS = Object.freeze({
   vjepa21: new Set(["learned-visual-representation"]),
@@ -52,6 +53,7 @@ const EVIDENCE_KINDS = Object.freeze({
   audioModel: new Set(["learned-speech-music-representation", "learned-audioset-label-evidence"]),
   semanticModel: new Set(["learned-keyframe-semantics"]),
   measuredAudio: new Set(["measured-audio-descriptors"]),
+  asr: new Set(["measured-speech-transcript"]),
 });
 const FORBIDDEN_FEATURE_FRAGMENTS = ["tribe", "bold", "brain", "cortex", "cortical", "parcel", "virality", "retention", "completion", "rewatch"];
 
@@ -153,7 +155,10 @@ function validateWorkerResult(value, branch, inputSha256) {
     "features", "observations", "warnings", "provenance", "behavioralOutcome",
   ], `${branch} worker result`);
   const measuredAudio = branch === "measuredAudio";
-  const expectedSchema = measuredAudio ? "creator-forecast-measured-audio/1" : "creator-forecast-worker-output/1";
+  const transcript = branch === "asr";
+  const expectedSchema = measuredAudio
+    ? "creator-forecast-measured-audio/1"
+    : transcript ? "creator-forecast-asr/1" : "creator-forecast-worker-output/1";
   if (value.schemaVersion !== expectedSchema || value.branch !== branch || value.inputSha256 !== inputSha256 || value.behavioralOutcome !== false) {
     throw new Error(`${branch} worker result identity is invalid.`);
   }
@@ -191,6 +196,12 @@ function validateWorkerResult(value, branch, inputSha256) {
     text(provenance.preprocessingId, `${branch} provenance preprocessingId`, { maximum: 256 });
     integer(provenance.sampleRateHz, `${branch} provenance sampleRateHz`, { minimum: 1 });
     if (provenance.usesLearnedModel !== false) throw new Error(`${branch} provenance made an unsupported learned-model claim.`);
+  } else if (transcript) {
+    exactKeys(provenance, ["adapterId", "preprocessingId", "sampleRateHz", "modelId", "modelRevision", "usesLearnedModel"], `${branch} provenance`);
+    for (const key of ["adapterId", "preprocessingId", "modelId"]) text(provenance[key], `${branch} provenance ${key}`, { maximum: 256 });
+    integer(provenance.sampleRateHz, `${branch} provenance sampleRateHz`, { minimum: 1 });
+    if (!COMMIT.test(provenance.modelRevision)) throw new Error(`${branch} transcript model revision is not immutable.`);
+    if (provenance.usesLearnedModel !== true) throw new Error(`${branch} provenance misdescribes its learned transcript model.`);
   } else {
     exactKeys(provenance, [
       "branch", "modelId", "modelRevision", "modelWeightsSha256", "adapterId",
@@ -216,7 +227,7 @@ function validateProvider(value, branch, inputSha256) {
     text(provider.reason, `${branch} unavailable reason`);
     return provider;
   }
-  if (provider.status !== "available" || !["vjepa21", "videoLlama21Av", "audioModel", "semanticModel", "measuredAudio"].includes(branch)) {
+  if (provider.status !== "available" || !["vjepa21", "videoLlama21Av", "audioModel", "semanticModel", "measuredAudio", "asr"].includes(branch)) {
     throw new Error(`${branch} provider reported an unsupported availability state.`);
   }
   keysWithOptional(provider, ["status", "configured", "forecastContribution", "behavioralOutcome", "evidenceKind", "result"], ["provider"], `${branch} provider`);
@@ -245,9 +256,10 @@ function validateEvidence(value, input) {
     throw new Error("Creator context evidence is invalid.");
   }
   const providerKeys = Object.keys(record(value.optionalProviders, "optional provider ledger")).sort();
-  const coreKeys = [...CORE_OPTIONAL_PROVIDER_KEYS].sort();
-  const extendedKeys = [...OPTIONAL_PROVIDER_KEYS].sort();
-  const knownShape = [coreKeys, extendedKeys].some((shape) => providerKeys.length === shape.length && providerKeys.every((key, index) => key === shape[index]));
+  // Every core branch must be declared. Optional local branches may be absent
+  // from an older backend, but an unknown key is never accepted silently.
+  const knownShape = CORE_OPTIONAL_PROVIDER_KEYS.every((key) => providerKeys.includes(key))
+    && providerKeys.every((key) => OPTIONAL_PROVIDER_KEYS.includes(key));
   if (!knownShape) throw new Error("Optional provider ledger returned an unexpected shape.");
   for (const branch of providerKeys) validateProvider(value.optionalProviders[branch], branch, input.sha256);
   exactKeys(value.tribe, ["status", "forecastContribution", "reason"], "TRIBE evidence boundary");

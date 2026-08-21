@@ -27,6 +27,12 @@ and terms.
 - **Audio Spectrogram Transformer AudioSet checkpoint** — downloaded separately
   and recorded by the worker as BSD-3-Clause. Review the exact checkpoint model
   card and upstream implementation notices.
+- **Whisper (MLX community conversion)** — the optional transcript branch pins
+  an `mlx-community` Whisper conversion by immutable revision and downloads it
+  separately. OpenAI's original Whisper model and code are **MIT**; the MLX
+  conversion, its dependencies, and its weights may carry distinct notices.
+  Review the exact model card and included license files before use. No
+  transcript model is bundled in this repository.
 
 No model weights, creator uploads, generated cortical tensors, or local model
 caches are intended to be committed to this repository.

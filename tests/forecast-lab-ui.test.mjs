@@ -43,6 +43,7 @@ function capabilityFixture() {
       ...branch("ready", true, "measured-audio", true),
       currentlyReady: true,
     },
+    asr: branch("not-configured"),
     account: branch("not-configured"),
     trends: branch("not-configured"),
     competitors: branch("not-configured"),

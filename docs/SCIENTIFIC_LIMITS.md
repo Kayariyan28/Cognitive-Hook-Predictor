@@ -15,6 +15,8 @@ claim.
 | NanoLLaVA evidence | Six sampled still frames | Literal scene/action/framing descriptions when schema-valid | Full-video semantics, OCR, soundtrack understanding, audience behavior |
 | AST evidence | AudioSet classifier over decoded windows | Candidate sound-event labels | Transcript, music appeal, sentiment, quality, or audience response |
 | Measured audio | PCM and STFT calculations | Signal facts such as energy, silence, centroid, flatness, and flux | Learned semantics or performance predictions |
+| Spoken transcript | Pinned mlx-whisper over the decoded 16 kHz mono track | Which words were spoken and when, when speech is present and recognizable | Speaker identity, sentiment, tone, meaning, delivery quality, or audience response |
+| Insight lane | A pinned language model over validated evidence, checked by a deterministic validator | Descriptive restatement of cited evidence and untested editing hypotheses | Any outcome, any mental state, any number the evidence does not contain |
 | Behavioral head | Separately approved and calibrated target model | Its exact declared platform/population/horizon probability | Any other outcome, platform, population, or time horizon |
 | TRIBE v2 tensor | Released average-subject brain-response model | Model-predicted cortical BOLD on `fsaverage5` | Measured viewer activity, an individual brain, attention, emotion, memory, engagement, or virality |
 
@@ -85,6 +87,21 @@ The Apple-silicon TRIBE profile disables audio and text and reports
 `inferenceMode: vision-only`. It remains genuine output from the official
 visual extractor plus cortical encoder, but it is not the full published
 trimodal path. Comparisons must use the same inference mode and provenance.
+
+## Transcript interpretation
+
+A transcript is a recognition result, not an understanding of a clip. It
+supports statements about which words were spoken and when they were spoken,
+and only when speech is present, audible, and in a language the pinned model
+handles. Word-error rate varies with accent, dialect, code-switching,
+background music, overlapping speech, and recording quality, and the branch
+does not report a confidence a creator could calibrate against.
+
+It does not establish who spoke, how many people spoke, how anyone felt, what
+was meant, whether delivery was good, or how an audience will respond. The
+branch records no speaker identity and no sentiment, by contract and by test.
+A missing or unrecognizable speech track leaves the branch unavailable; it is
+never filled in from captions, filenames, or creator-declared context.
 
 ## Frame and interval interpretation
 

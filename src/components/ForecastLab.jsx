@@ -70,6 +70,12 @@ const CAPABILITY_SPECS = Object.freeze([
     fallback: "Server-side waveform descriptors are not available for this result. They are measured signals, never learned speech/music semantics.",
   },
   {
+    key: "asr",
+    aliases: ["transcript", "speechTranscript"],
+    label: "Spoken transcript",
+    fallback: "The pinned transcript model is not installed. When available it records spoken words and timings only, never speaker identity or sentiment.",
+  },
+  {
     key: "account",
     aliases: ["accountContext"],
     label: "Account context",
@@ -239,6 +245,40 @@ function readableObservationText(value) {
   } catch {
     return value;
   }
+}
+
+function TranscriptSection({ result }) {
+  const provider = result?.evidence?.optionalProviders?.asr;
+  if (!provider) return null;
+  if (provider.status !== "available") {
+    return (
+      <div className="forecast-transcript forecast-transcript--unavailable">
+        <strong>TRANSCRIPT</strong>
+        <p>{provider.reason || "The transcript branch published no evidence for this result."}</p>
+      </div>
+    );
+  }
+  const segments = (provider.result?.observations || []).filter(
+    (item) => item?.kind === "asr-transcript-segment",
+  );
+  if (!segments.length) return null;
+  const language = (segments[0]?.labels || [])
+    .find((label) => typeof label === "string" && label.startsWith("language:"))
+    ?.slice("language:".length);
+  return (
+    <div className="forecast-transcript">
+      <strong>TRANSCRIPT{language && language !== "unknown" ? ` · ${language.toUpperCase()}` : ""}</strong>
+      <ol>
+        {segments.map((segment, index) => (
+          <li key={`${segment.startTime}-${index}`}>
+            <code>{formatSeconds(segment.startTime)}</code>
+            <span>{segment.text}</span>
+          </li>
+        ))}
+      </ol>
+      <small>Spoken words and timings only. No speaker identity, no sentiment, no audience claim.</small>
+    </div>
+  );
 }
 
 function ProviderEvidence({ capability }) {
@@ -705,6 +745,7 @@ export function ForecastLab({
             <p><strong>What unlocks real scores</strong><span>Legally licensed, platform-specific outcomes; a defined prediction horizon; chronological holdout tests; probability calibration; and drift monitoring.</span></p>
           </div>
           <div className="forecast-truth-note"><WarningCircle size={15} weight="fill" /><span>TRIBE is kept separate with <code>forecastContribution:false</code>. Local substitutes are descriptive and never relabeled as V-JEPA, VideoLLaMA, audio semantics, trends or competitors.</span></div>
+          <TranscriptSection result={forecastJobState?.result} />
           <InsightPanel
             forecastResultId={forecastJobState?.result?.resultId ?? null}
             tribeResultId={tribeDescriptors?.source?.resultId ?? null}

@@ -56,6 +56,7 @@ const CAPABILITY_BRANCH_KEYS = Object.freeze([
   "audioModel",
   "semanticModel",
   "measuredAudio",
+  "asr",
   "account",
   "trends",
   "competitors",

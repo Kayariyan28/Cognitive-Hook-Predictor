@@ -125,6 +125,7 @@ class ForecastOrchestratorTests(unittest.TestCase):
                 "audioModel",
                 "semanticModel",
                 "measuredAudio",
+                "asr",
                 "account",
                 "trends",
                 "competitors",

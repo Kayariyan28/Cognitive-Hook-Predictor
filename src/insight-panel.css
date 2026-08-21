@@ -366,3 +366,57 @@
 .ab-lab-experiment small {
   color: rgba(203, 230, 255, .68);
 }
+
+.forecast-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(247, 247, 245, .1);
+  border-radius: 14px;
+  background: rgba(247, 247, 245, .035);
+}
+
+.forecast-transcript strong {
+  font-size: 9.5px;
+  font-weight: 780;
+  letter-spacing: .09em;
+  color: rgba(247, 247, 245, .56);
+}
+
+.forecast-transcript ol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.forecast-transcript li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.forecast-transcript code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: rgba(247, 247, 245, .5);
+}
+
+.forecast-transcript small,
+.forecast-transcript p {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: rgba(247, 247, 245, .5);
+}
+
+.forecast-transcript--unavailable p {
+  color: rgba(255, 191, 166, .82);
+}

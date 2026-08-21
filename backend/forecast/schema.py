@@ -43,6 +43,12 @@ BRANCH_DEFINITIONS: dict[str, dict[str, str]] = {
         "evidenceKind": "measured-audio-descriptors",
         "missingReason": "The server audio decoder is not configured.",
     },
+    "asr": {
+        "label": "Spoken-word transcript",
+        "role": "optional-measured-speech-transcript",
+        "evidenceKind": "measured-speech-transcript",
+        "missingReason": "No pinned mlx-whisper revision is configured for the transcript branch.",
+    },
     "account": {
         "label": "Account-history context",
         "role": "optional-distribution-context",
@@ -380,6 +386,7 @@ def build_capabilities(
         "measuredAudio": _registered_branch(
             "measuredAudio", registry, runtime_branches.get("measuredAudio")
         ),
+        "asr": _registered_branch("asr", registry, runtime_branches.get("asr")),
         "tribeCortical": _tribe_branch(tribe_runtime_status),
     }
     calibration_heads = {
