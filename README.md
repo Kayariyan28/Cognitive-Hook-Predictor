@@ -222,6 +222,7 @@ complete clean-machine instructions and verified hashes are in
 | `POST` | `/api/insight/v1/generate` | Generate one cited, validated descriptive insight artifact |
 | `GET` | `/api/insight/v1/results/{id}` | Retrieve a published insight artifact |
 | `GET` | `/api/insight/v1/rejections/{id}` | Retrieve a persisted insight rejection record |
+| `POST` | `/api/insight/v1/experiments` | Track one proposed experiment through to measured deltas |
 
 Detailed request, binary tensor, caching, and registry contracts are in
 [backend/README.md](backend/README.md) and

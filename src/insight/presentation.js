@@ -170,3 +170,58 @@ export function buildAbCompareLink(experiment, { forecastResultId = null, insigh
 }
 
 export { TRIBE_STANDING_CAPTION };
+
+export const EXPERIMENT_STATUS_LABELS = Object.freeze({
+  proposed: "Proposed",
+  edited: "Edit made",
+  compared: "Compared",
+});
+
+const MATCH_LABELS = Object.freeze({
+  matched: "Signal moved as expected",
+  opposite: "Signal moved the other way",
+  unmatched: "Signal did not move",
+  unmeasured: "Not measured in both results",
+});
+
+/**
+ * Present one tracked experiment. Expected direction is an untested heuristic;
+ * measured direction is a change in a measured signal. Neither is an outcome.
+ */
+export function presentExperiment(record) {
+  if (!record || typeof record !== "object") return null;
+  const [baselineResultId = null, variantResultId = null] = Array.isArray(record.linkedResultIds)
+    ? record.linkedResultIds
+    : [];
+  const deltas = Array.isArray(record.measuredDeltas) ? record.measuredDeltas : [];
+  return Object.freeze({
+    id: record.id ?? null,
+    status: record.status ?? "proposed",
+    statusLabel: EXPERIMENT_STATUS_LABELS[record.status] ?? "Proposed",
+    edit: record.edit ?? "",
+    effort: record.effort ?? null,
+    sourceInsightId: record.sourceInsightId ?? null,
+    baselineResultId,
+    variantResultId,
+    behavioralOutcome: false,
+    signals: Object.freeze(
+      (Array.isArray(record.expectedSignalShift) ? record.expectedSignalShift : []).map((shift) => {
+        const measured = deltas.find((entry) => entry?.metricPath === shift.metricPath) ?? null;
+        const match = measured?.match ?? "unmeasured";
+        return Object.freeze({
+          metricPath: shift.metricPath,
+          expectedDirection: shift.direction,
+          observedDirection: measured?.observedDirection ?? null,
+          delta: measured?.delta ?? null,
+          baselineValue: measured?.baselineValue ?? null,
+          variantValue: measured?.variantValue ?? null,
+          match,
+          matchLabel: MATCH_LABELS[match] ?? MATCH_LABELS.unmeasured,
+          reason: measured?.reason ?? null,
+        });
+      }),
+    ),
+  });
+}
+
+export { MATCH_LABELS };

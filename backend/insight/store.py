@@ -26,9 +26,15 @@ class InsightStore:
         self.artifacts_dir = self.root / "artifacts"
         self.rejections_dir = self.root / "rejections"
         self.cache_dir = self.root / "cache"
+        self.experiments_dir = self.root / "experiments"
 
     def initialize(self) -> None:
-        for directory in (self.artifacts_dir, self.rejections_dir, self.cache_dir):
+        for directory in (
+            self.artifacts_dir,
+            self.rejections_dir,
+            self.cache_dir,
+            self.experiments_dir,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
     # -- primitives --------------------------------------------------------
@@ -147,6 +153,42 @@ class InsightStore:
 
     def read_rejection(self, rejection_id: str) -> dict[str, Any] | None:
         return self._read_json(self.rejections_dir / rejection_id / "rejection.json")
+
+    # -- experiments -------------------------------------------------------
+
+    def publish_experiment(self, experiment_id: str, payload: Mapping[str, Any]) -> str:
+        return self._publish_directory(
+            self.experiments_dir, experiment_id, {"experiment.json": payload}
+        )
+
+    def update_experiment(self, experiment_id: str, payload: Mapping[str, Any]) -> None:
+        """Advance one existing experiment; the file swap itself stays atomic."""
+
+        directory = self.experiments_dir / experiment_id
+        if not directory.is_dir():
+            raise InsightStoreError(f"experiment {experiment_id} does not exist")
+        self._write_json_atomic(directory / "experiment.json", payload)
+
+    def read_experiment(self, experiment_id: str) -> dict[str, Any] | None:
+        payload = self._read_json(self.experiments_dir / experiment_id / "experiment.json")
+        if payload is None:
+            return None
+        if payload.get("id") != experiment_id:
+            raise InsightStoreError("stored experiment has an invalid identity")
+        return payload
+
+    def list_experiments(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        if not self.experiments_dir.is_dir():
+            return []
+        records: list[dict[str, Any]] = []
+        for directory in sorted(self.experiments_dir.iterdir()):
+            if not directory.is_dir() or directory.name.startswith("."):
+                continue
+            payload = self._read_json(directory / "experiment.json")
+            if payload is not None:
+                records.append(payload)
+        records.sort(key=lambda item: str(item.get("createdAt", "")), reverse=True)
+        return records[:limit]
 
     # -- cache -------------------------------------------------------------
 

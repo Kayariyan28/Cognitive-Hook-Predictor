@@ -318,3 +318,90 @@ test("the panel never renders a placeholder score or a fabricated value", async 
     );
   }
 });
+
+import { EXPERIMENT_STATUS_LABELS, presentExperiment } from "../src/insight/presentation.js";
+
+function experimentRecord(overrides = {}) {
+  return {
+    schemaVersion: "insight-experiment/1",
+    id: "a".repeat(32),
+    createdAt: "2026-02-01T10:00:00Z",
+    sourceInsightId: "d".repeat(32),
+    sourceExperimentId: "x1",
+    hypothesisIds: ["h1"],
+    edit: "Trim the still frame at the start.",
+    effort: "low",
+    expectedSignalShift: [
+      { metricPath: "measured:/audio/descriptors/silent_window_fraction", direction: "decrease" },
+    ],
+    status: "compared",
+    linkedResultIds: ["a".repeat(32), "b".repeat(32)],
+    measuredDeltas: [
+      {
+        metricPath: "measured:/audio/descriptors/silent_window_fraction",
+        expectedDirection: "decrease",
+        baselineValue: 0.1875,
+        variantValue: 0.1125,
+        delta: -0.075,
+        observedDirection: "decrease",
+        match: "matched",
+        reason: null,
+      },
+    ],
+    behavioralOutcome: false,
+    ...overrides,
+  };
+}
+
+test("a tracked experiment shows expected against measured direction", () => {
+  const presented = presentExperiment(experimentRecord());
+  assert.equal(presented.statusLabel, EXPERIMENT_STATUS_LABELS.compared);
+  assert.equal(presented.baselineResultId, "a".repeat(32));
+  assert.equal(presented.variantResultId, "b".repeat(32));
+  assert.equal(presented.signals[0].expectedDirection, "decrease");
+  assert.equal(presented.signals[0].observedDirection, "decrease");
+  assert.equal(presented.signals[0].match, "matched");
+  assert.match(presented.signals[0].matchLabel, /as expected/);
+  assert.equal(presented.behavioralOutcome, false);
+});
+
+test("an opposite measured direction is labelled, not hidden", () => {
+  const record = experimentRecord();
+  record.measuredDeltas[0].observedDirection = "increase";
+  record.measuredDeltas[0].match = "opposite";
+  const presented = presentExperiment(record);
+  assert.equal(presented.signals[0].match, "opposite");
+  assert.match(presented.signals[0].matchLabel, /the other way/);
+});
+
+test("an experiment with no variant reports every signal as unmeasured", () => {
+  const presented = presentExperiment(
+    experimentRecord({ status: "proposed", linkedResultIds: ["a".repeat(32)], measuredDeltas: null }),
+  );
+  assert.equal(presented.statusLabel, EXPERIMENT_STATUS_LABELS.proposed);
+  assert.equal(presented.variantResultId, null);
+  assert.equal(presented.signals[0].match, "unmeasured");
+  assert.equal(presented.signals[0].delta, null);
+});
+
+test("an unmeasured metric carries the reason it could not be measured", () => {
+  const record = experimentRecord();
+  record.measuredDeltas[0] = {
+    metricPath: "measured:/audio/descriptors/silent_window_fraction",
+    expectedDirection: "decrease",
+    baselineValue: 0.1875,
+    variantValue: null,
+    delta: null,
+    observedDirection: null,
+    match: "unmeasured",
+    reason: "This metric path does not resolve to a number in the variant result.",
+  };
+  const presented = presentExperiment(record);
+  assert.equal(presented.signals[0].match, "unmeasured");
+  assert.match(presented.signals[0].reason, /variant result/);
+});
+
+test("presentExperiment refuses anything that is not a record", () => {
+  assert.equal(presentExperiment(null), null);
+  assert.equal(presentExperiment("nope"), null);
+});

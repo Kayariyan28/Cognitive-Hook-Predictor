@@ -105,6 +105,12 @@ conversion, or equals a bound of the requested window. Anything else is
 | `POST /api/insight/v1/generate` | Body `{forecastResultId, tribeResultId?, tribeDescriptors?, hookOnly?}`. Returns an artifact or an explicit unavailable document. |
 | `GET /api/insight/v1/results/{id}` | One published artifact. |
 | `GET /api/insight/v1/rejections/{id}` | One persisted rejection record, including the offending sentence. |
+| `GET /api/insight/v1/results/{id}/evidence` | The exact evidence bundle an artifact cites, so a citation chip can reveal a real value. |
+| `POST /api/insight/v1/experiments` | Track one Hook Doctor experiment. Body `{insightId, experimentId}`. |
+| `POST /api/insight/v1/experiments/{id}/edited` | Record that the creator made the edit. |
+| `POST /api/insight/v1/experiments/{id}/variant` | Attach a second analysed clip and measure the declared signal shifts. |
+| `GET /api/insight/v1/experiments` | Tracked experiments, newest first. |
+| `GET /api/insight/v1/experiments/{id}` | One tracked experiment. |
 
 Responses are `private, no-store`. A malformed request is an HTTP 400 with the
 repo's `{code, message}` detail. A lane-level failure is an HTTP 200 carrying
@@ -136,3 +142,31 @@ runs the model again rather than serving a refusal from disk.
 
 For a claim-boundary rejection, the fix is the prompt template or the bundle —
 never the validator.
+
+## Experiments
+
+The insight lane proposes edits; the experiment tracker is what closes that
+loop. An experiment moves through `proposed` → `edited` → `compared`, carries
+the hypothesis it came from and the signal shift it was proposed to produce,
+and links the baseline result and — once attached — the variant result.
+
+When a variant is attached, each declared `metricPath` is resolved in both
+clips' evidence bundles and the change is classified with the same tolerance
+rule `src/tribe/variantComparison.js` already uses for A/B comparison; a test
+reads that constant out of the JavaScript so a second rule cannot drift into
+existence. Each metric is then reported as:
+
+| match | Meaning |
+| --- | --- |
+| `matched` | The measured signal moved in the direction the hypothesis expected |
+| `opposite` | It moved the other way |
+| `unmatched` | It did not move beyond the comparison tolerance |
+| `unmeasured` | The metric path does not resolve to a number in one of the two results |
+
+`unmeasured` is a first-class state: a metric that cannot be measured in both
+clips is never quietly treated as unchanged.
+
+A measured delta is a change in a measured signal between two analysed clips.
+It is not an audience outcome, not a result, and not evidence that the
+hypothesis was correct — no clip in this system has ever been shown to an
+audience.

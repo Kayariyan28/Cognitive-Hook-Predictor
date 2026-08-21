@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, Flask, Quotes, ShieldWarning, Sparkle } from "@phosphor-icons/react";
 
-import { fetchInsightEvidence, fetchInsightStatus, generateInsight } from "../insight/client.js";
+import {
+  createExperiment,
+  fetchInsightEvidence,
+  fetchInsightStatus,
+  generateInsight,
+  listExperiments,
+} from "../insight/client.js";
 import { HYPOTHESIS_LABEL } from "../insight/contract.js";
 import {
   HOOK_REPORT_SECTION_LABELS,
@@ -10,6 +16,7 @@ import {
   experimentsByEffort,
   phaseCommentaryInClipOrder,
   presentCitation,
+  presentExperiment,
   presentProviderState,
   presentUnavailable,
 } from "../insight/presentation.js";
@@ -90,7 +97,54 @@ function Hypotheses({ items, bundle, onSeek }) {
   );
 }
 
-function Experiments({ items, bundle, forecastResultId, insightId, onSeek, onOpenAbCompare }) {
+function ExperimentLedger({ records, onRefresh }) {
+  if (!records.length) return null;
+  return (
+    <section className="insight-section insight-section--separated">
+      <h4>Tracked experiments</h4>
+      <ul className="insight-tracked-list">
+        {records.map((record) => (
+          <li key={record.id}>
+            <div className="insight-tracked-head">
+              <span className={`insight-tracked-status insight-tracked-status--${record.status}`}>
+                {record.statusLabel}
+              </span>
+              {record.effort && (
+                <span className={`insight-effort insight-effort--${record.effort}`}>
+                  {record.effort} effort
+                </span>
+              )}
+            </div>
+            <p>{record.edit}</p>
+            <ul className="insight-tracked-signals">
+              {record.signals.map((signal) => (
+                <li key={signal.metricPath}>
+                  <code>{signal.metricPath}</code>
+                  <em>expected {signal.expectedDirection}</em>
+                  <b className={`insight-match insight-match--${signal.match}`}>{signal.matchLabel}</b>
+                  {signal.reason && <small>{signal.reason}</small>}
+                </li>
+              ))}
+            </ul>
+            <div className="insight-tracked-links">
+              <span>
+                Baseline: <code>{record.baselineResultId ?? "—"}</code>
+              </span>
+              <span>
+                Variant: <code>{record.variantResultId ?? "not attached"}</code>
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <button className="insight-ab-link" type="button" onClick={onRefresh}>
+        Refresh experiments
+      </button>
+    </section>
+  );
+}
+
+function Experiments({ items, bundle, forecastResultId, insightId, onSeek, onOpenAbCompare, onTrack, tracking }) {
   return (
     <ol className="insight-experiment-list">
       {experimentsByEffort(items).map((experiment) => (
@@ -111,16 +165,26 @@ function Experiments({ items, bundle, forecastResultId, insightId, onSeek, onOpe
             ))}
           </ul>
           <CitationChips citations={experiment.citations} bundle={bundle} onSeek={onSeek} />
-          <button
-            className="insight-ab-link"
-            type="button"
-            onClick={() =>
-              onOpenAbCompare?.(buildAbCompareLink(experiment, { forecastResultId, insightId }))
-            }
-            disabled={!onOpenAbCompare}
-          >
-            <Flask size={13} weight="fill" aria-hidden="true" /> Test via A/B compare
-          </button>
+          <div className="insight-experiment-actions">
+            <button
+              className="insight-ab-link"
+              type="button"
+              onClick={() =>
+                onOpenAbCompare?.(buildAbCompareLink(experiment, { forecastResultId, insightId }))
+              }
+              disabled={!onOpenAbCompare}
+            >
+              <Flask size={13} weight="fill" aria-hidden="true" /> Test via A/B compare
+            </button>
+            <button
+              className="insight-ab-link"
+              type="button"
+              onClick={() => onTrack?.(experiment.id)}
+              disabled={!onTrack || tracking === experiment.id}
+            >
+              {tracking === experiment.id ? "Tracking…" : "Track this experiment"}
+            </button>
+          </div>
         </li>
       ))}
     </ol>
@@ -139,6 +203,9 @@ export function InsightPanel({
   const [generation, setGeneration] = useState(IDLE);
   const [bundle, setBundle] = useState(null);
   const [provenanceOpen, setProvenanceOpen] = useState(false);
+  const [experiments, setExperiments] = useState([]);
+  const [tracking, setTracking] = useState(null);
+  const [trackError, setTrackError] = useState("");
   const abortRef = useRef(null);
 
   useEffect(() => {
@@ -214,6 +281,39 @@ export function InsightPanel({
       }
     },
     [baseUrl, forecastResultId, tribeDescriptors, tribeResultId],
+  );
+
+  const refreshExperiments = useCallback(async () => {
+    try {
+      const records = await listExperiments({ baseUrl });
+      setExperiments(records.map(presentExperiment).filter(Boolean));
+    } catch {
+      setExperiments([]);
+    }
+  }, [baseUrl]);
+
+  useEffect(() => {
+    refreshExperiments();
+  }, [refreshExperiments]);
+
+  const track = useCallback(
+    async (experimentId) => {
+      if (!generation.artifact) return;
+      setTracking(experimentId);
+      setTrackError("");
+      try {
+        await createExperiment(
+          { insightId: generation.artifact.insightId, experimentId },
+          { baseUrl },
+        );
+        await refreshExperiments();
+      } catch (error) {
+        setTrackError(error?.message || "This experiment could not be tracked.");
+      } finally {
+        setTracking(null);
+      }
+    },
+    [baseUrl, generation.artifact, refreshExperiments],
   );
 
   const provider = statusState.provider;
@@ -309,7 +409,10 @@ export function InsightPanel({
               insightId={artifact.insightId}
               onSeek={onSeek}
               onOpenAbCompare={onOpenAbCompare}
+              onTrack={track}
+              tracking={tracking}
             />
+            {trackError && <p className="insight-reason-code">{trackError}</p>}
           </section>
 
           {artifact.phaseCommentary.length > 0 && (
@@ -382,6 +485,8 @@ export function InsightPanel({
           </details>
         </div>
       )}
+
+      <ExperimentLedger records={experiments} onRefresh={refreshExperiments} />
     </section>
   );
 }

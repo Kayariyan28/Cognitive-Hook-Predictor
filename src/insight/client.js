@@ -141,3 +141,62 @@ export async function fetchInsightEvidence(insightId, { signal, baseUrl } = {}) 
     );
   }
 }
+
+/** Track one Hook Doctor experiment so the loop it opens can be closed. */
+export async function createExperiment({ insightId, experimentId }, { signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/experiments`, {
+    method: "POST",
+    signal,
+    cache: "no-store",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ insightId, experimentId }),
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  return payload;
+}
+
+/** Record that the creator has made the edit, before any variant exists. */
+export async function markExperimentEdited(experimentId, { signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(
+    `${config.baseUrl}/api/insight/v1/experiments/${encodeURIComponent(experimentId)}/edited`,
+    { method: "POST", signal, cache: "no-store", headers: { Accept: "application/json" } },
+  );
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  return payload;
+}
+
+/** Attach a second analysed clip and measure the declared signal shifts. */
+export async function attachExperimentVariant(experimentId, forecastResultId, { signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(
+    `${config.baseUrl}/api/insight/v1/experiments/${encodeURIComponent(experimentId)}/variant`,
+    {
+      method: "POST",
+      signal,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ forecastResultId }),
+    },
+  );
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  return payload;
+}
+
+/** List tracked experiments, newest first. */
+export async function listExperiments({ signal, baseUrl } = {}) {
+  const config = configuration(baseUrl);
+  const response = await fetch(`${config.baseUrl}/api/insight/v1/experiments`, {
+    signal,
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+  const payload = await readJson(response);
+  if (!response.ok) throw callerError(payload, response.status);
+  const experiments = Array.isArray(payload?.experiments) ? payload.experiments : [];
+  return Object.freeze(experiments);
+}

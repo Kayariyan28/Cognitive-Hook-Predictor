@@ -73,6 +73,12 @@ class InsightService:
         self._load_forecast_result = forecast_result_loader
         self._provider_factory = provider_factory or build_provider
 
+    @property
+    def forecast_result_loader(self) -> Callable[[str], Mapping[str, Any] | None]:
+        """The same loader the experiment tracker needs; one source of results."""
+
+        return self._load_forecast_result
+
     # -- status ------------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
